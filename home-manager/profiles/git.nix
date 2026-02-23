@@ -20,4 +20,47 @@
       init.defaultBranch = "main";
     };
   };
+
+  home.shellAliases = {
+    g = "git";
+    ga = "git add";
+    gb = "git branch";
+    gba = "git branch --all";
+    gco = "git checkout";
+    gc = "git commit --verbose";
+    gca = "git commit --verbose --all";
+    gcan = "git commit --verbose --all --no-edit";
+    "gca!" = "git commit --verbose --all --amend";
+    "gcan!" = "git commit --verbose --all --amend --no-edit";
+    gcn = "git commit --verbose --no=edit";
+    "gcn!" = "git commit --verbose --no=edit --amend";
+    gd = "git diff";
+    gdca = "git diff --cached";
+    gdcw = "git diff --cached --word-diff";
+    gds = "git diff --staged";
+    gdw = "git diff --word-diff";
+    gfa = "git fetch --all --tags --prune --jobs=10";
+    gl = "git pull";
+    "gl!" = "git pull --autostash";
+    glg = "git log --stat";
+    glgg = "git log --graph";
+    gp = "git push";
+    gpf = "git push --force-with-lease --force-if-includes";
+    "gpf!" = "git push --force";
+    grb = "git rebase";
+    grba = "git rebase --abort";
+    grbc = "git rebase --continue";
+    grbi = "git rebase --interactive";
+    grf = "git reflog";
+    gr = "git remote";
+    grv = "git remote --verbose";
+    gra = "git remote add";
+    grrm = "git remote remove";
+    grmv = "git remote rename";
+    grset = "git remote set-url";
+    # TODO: stash
+    gst = "git status";
+    gsw = "git switch";
+    gswc = "git switch --create";
+  };
 }

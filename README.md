@@ -1,7 +1,8 @@
 # TODO
 
-- devshell
 - sops
+  - sensitive env
+  - ssh config
 - nixos
   - system
   - home

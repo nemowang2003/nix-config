@@ -5,14 +5,12 @@
     inputs.home-manager.darwinModules.home-manager
   ];
 
+  nix.enable = false;
   nixpkgs.hostPlatform = "aarch64-darwin";
 
-  system.primaryUser = "nemo";
-  users.users.nemo = {
-    name = "nemo";
-    home = "/Users/nemo";
-    shell = pkgs.zsh;
-  };
+  programs.zsh.enable = true;
+  environment.shells = [ pkgs.zsh ];
+
   security = {
     pam.services.sudo_local.touchIdAuth = true;
     sudo.extraConfig = ''
@@ -20,14 +18,12 @@
     '';
   };
 
-  environment = {
-    shells = [ pkgs.zsh ];
-    systemPackages = [
-      inputs.darwin.packages."${pkgs.stdenv.hostPlatform.system}".default
-    ];  
+  system.primaryUser = "nemo";
+  users.users.nemo = {
+    name = "nemo";
+    home = "/Users/nemo";
+    shell = pkgs.zsh;
   };
-  nix.enable = false;
-  programs.zsh.enable = true;
 
   homebrew = {
       enable = true;
@@ -40,7 +36,7 @@
       };
 
       global.brewfile = true;
-    
+
       casks = [
         "android-platform-tools"
         "bitwarden"
