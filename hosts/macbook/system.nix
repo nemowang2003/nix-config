@@ -9,16 +9,27 @@
   nixpkgs.hostPlatform = "aarch64-darwin";
 
   programs.zsh.enable = true;
-  environment.shells = [ pkgs.zsh ];
+  environment = {
+    etc."nix/nix.custom.conf".text = ''
+      substituters = https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store https://mirrors.ustc.edu.cn/nix-channels/store https://cache.nixos.org
+    '';
+    shells = [ pkgs.zsh ];
+    variables = {
+      HOMEBREW_API_DOMAIN = "https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api";
+    };
+  };
 
-  security = {
-    pam.services.sudo_local.touchIdAuth = true;
-    sudo.extraConfig = ''
-      Defaults env_keep += "https_proxy http_proxy all_proxy"
+  security.pam.services.sudo_local.touchIdAuth = true;
+
+  system = {
+    primaryUser = "nemo";
+
+    activationScripts.postActivation.text = ''
+      echo "restarting determinate nix daemon ..."
+      launchctl kickstart -k system/systems.determinate.nix-daemon
     '';
   };
 
-  system.primaryUser = "nemo";
   users.users.nemo = {
     name = "nemo";
     home = "/Users/nemo";
@@ -29,13 +40,11 @@
       enable = true;
 
       onActivation = {
-        autoUpdate = true;
-        upgrade = true;
         extraFlags = [ "--verbose" ];
         cleanup = "zap";
       };
 
-      global.brewfile = true;
+      global.autoUpdate = false;
 
       casks = [
         "android-platform-tools"

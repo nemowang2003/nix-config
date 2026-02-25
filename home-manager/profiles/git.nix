@@ -1,11 +1,17 @@
-{ config, lib, pkgs, ... }:
-
 {
+  config,
+  lib,
+  pkgs,
+  ...
+}: {
+  # git
   programs.git = {
     enable = true;
-    ignores = [
-      
-    ] ++ lib.optionals pkgs.stdenv.isDarwin [ ".DS_Store" ];
+    ignores =
+      [
+        ".helix"
+      ]
+      ++ lib.optionals pkgs.stdenv.isDarwin [".DS_Store"];
     settings = {
       user = {
         name = "nemowang";
@@ -28,12 +34,13 @@
     gba = "git branch --all";
     gco = "git checkout";
     gc = "git commit --verbose";
+    "gc!" = "git commit --verbose --amend";
     gca = "git commit --verbose --all";
     gcan = "git commit --verbose --all --no-edit";
     "gca!" = "git commit --verbose --all --amend";
     "gcan!" = "git commit --verbose --all --amend --no-edit";
-    gcn = "git commit --verbose --no=edit";
-    "gcn!" = "git commit --verbose --no=edit --amend";
+    gcn = "git commit --verbose --no-edit";
+    "gcn!" = "git commit --verbose --no-edit --amend";
     gd = "git diff";
     gdca = "git diff --cached";
     gdcw = "git diff --cached --word-diff";
@@ -57,9 +64,16 @@
     gra = "git remote add";
     grrm = "git remote remove";
     grmv = "git remote rename";
-    grset = "git remote set-url";
-    # TODO: stash
+    grs = "git restore";
+    grst = "git restore --staged";
     gst = "git status";
+    gsta = "git stash push";
+    gstaa = "git stash push --all";
+    gstp = "git stash pop";
+    "gstp!" = "git stash apply";
+    gstd = "git stash drop";
+    gsts = "git stash show --patch";
+    gstl = "git stash list";
     gsw = "git switch";
     gswc = "git switch --create";
   };

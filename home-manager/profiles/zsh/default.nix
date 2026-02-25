@@ -1,4 +1,4 @@
-{ config, pkgs, lib, ... }:
+{ pkgs, lib, ... }:
 
 {
   programs.zsh = {
@@ -6,7 +6,7 @@
     autocd = true;
     autosuggestion.enable = true;
     syntaxHighlighting.enable = true;
-    completionInit = "autoload -Uz compinit";
+    completionInit = "autoload -Uz compinit && compinit";
     defaultKeymap = "viins";
 
     shellGlobalAliases = {
@@ -17,35 +17,20 @@
     };
 
     shellAliases = {
-      "-"="cd -";
-      "1"="cd -1";
-      "2"="cd -2";
-      "3"="cd -3";
-      "4"="cd -4";
-      "5"="cd -5";
-      "6"="cd -6";
-      "7"="cd -7";
-      "8"="cd -8";
-      "9"="cd -9";
-      l = "ls -lh";
-      ll = "ls -lh";
-      la = "ls -lAh";
-    } // lib.optionalAttrs pkgs.stdenv.isDarwin {
-      ls = "ls -G";
-    } // lib.optionalAttrs (!pkgs.stdenv.isDarwin) {
-
+      "1" = "cd -1";
+      "2" = "cd -2";
+      "3" = "cd -3";
+      "4" = "cd -4";
+      "5" = "cd -5";
+      "6" = "cd -6";
+      "7" = "cd -7";
+      "8" = "cd -8";
+      "9" = "cd -9";
+      d = "dirs -v";
     };
 
     localVariables = {
       KEYTIMEOUT = 1;
-    };
-
-    sessionVariables = {
-      LS_COLORS = "di=1;36:ln=35:so=32:pi=33:ex=31:bd=34;46:cd=34;43:su=30;41:sg=30;46:tw=30;42:ow=30;43";
-    } // lib.optionalAttrs pkgs.stdenv.isDarwin {
-      LSCOLORS = "Gxfxcxdxbxegedabagacad";
-    } // lib.optionalAttrs (!pkgs.stdenv.isDarwin) {
-
     };
 
     history = {
