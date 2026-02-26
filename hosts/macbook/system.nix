@@ -1,6 +1,8 @@
-{ pkgs, inputs, ... }:
-
 {
+  pkgs,
+  inputs,
+  ...
+}: {
   imports = [
     inputs.home-manager.darwinModules.home-manager
   ];
@@ -13,7 +15,7 @@
     etc."nix/nix.custom.conf".text = ''
       substituters = https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store https://mirrors.ustc.edu.cn/nix-channels/store https://cache.nixos.org
     '';
-    shells = [ pkgs.zsh ];
+    shells = [pkgs.zsh];
     variables = {
       HOMEBREW_API_DOMAIN = "https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api";
     };
@@ -37,38 +39,39 @@
   };
 
   homebrew = {
-      enable = true;
+    enable = true;
+    enableZshIntegration = true;
 
-      onActivation = {
-        extraFlags = [ "--verbose" ];
-        cleanup = "zap";
-      };
+    onActivation = {
+      extraFlags = ["--verbose"];
+      cleanup = "zap";
+    };
 
-      global.autoUpdate = false;
+    global.autoUpdate = false;
 
-      casks = [
-        "android-platform-tools"
-        "bitwarden"
-        "clash-verge-rev"
-        "google-chrome"
-        "hammerspoon"
-        "iina"
-        "iterm2"
-        "karabiner-elements"
-        "mac-mouse-fix"
-        "obsidian"
-        "qq"
-        "raycast"
-        "steam"
-        "tailscale-app"
-        "tencent-lemon"
-        "tencent-meeting"
-        "the-unarchiver"
-        "visual-studio-code"
-        "wechat"
-        "windows-app"
-        "wpsoffice-cn"
-      ];
+    casks = [
+      "android-platform-tools"
+      "bitwarden"
+      "clash-verge-rev"
+      "google-chrome"
+      "hammerspoon"
+      "iina"
+      "iterm2"
+      "karabiner-elements"
+      "mac-mouse-fix"
+      "obsidian"
+      "qq"
+      "raycast"
+      "steam"
+      "tailscale-app"
+      "tencent-lemon"
+      "tencent-meeting"
+      "the-unarchiver"
+      "visual-studio-code"
+      "wechat"
+      "windows-app"
+      "wpsoffice-cn"
+    ];
   };
 
   system.stateVersion = 6;

@@ -1,7 +1,5 @@
-{ pkgs, ... }:
-
-{
-  home.packages = [ pkgs.aria2 ]; 
+{pkgs, ...}: {
+  home.packages = [pkgs.aria2];
 
   programs.yt-dlp = {
     enable = true;

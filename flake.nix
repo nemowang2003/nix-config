@@ -20,8 +20,15 @@
     sops-nix.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, home-manager, darwin, catppuccin, devshell, ... }@inputs:
-  let
+  outputs = {
+    self,
+    nixpkgs,
+    home-manager,
+    darwin,
+    catppuccin,
+    devshell,
+    ...
+  } @ inputs: let
     systems = [
       "aarch64-darwin"
       "x86_64-linux"
@@ -38,12 +45,13 @@
         devshell.overlays.default
       ];
     in
-    nixpkgs.lib.genAttrs systems (system:
-      import nixpkgs {
-        inherit system overlays;
-        config.allowUnfree = true;
-      }
-    );
+      nixpkgs.lib.genAttrs systems (
+        system:
+          import nixpkgs {
+            inherit system overlays;
+            config.allowUnfree = true;
+          }
+      );
   in {
     # TODO
     # nixosConfigurations = {
@@ -66,7 +74,7 @@
 
     darwinConfigurations = {
       "ian-macbook" = darwin.lib.darwinSystem {
-        specialArgs = { inherit inputs; };
+        specialArgs = {inherit inputs;};
         modules = [
           ./hosts/macbook/system.nix
         ];
@@ -76,7 +84,7 @@
     homeConfigurations = {
       "nemo@ian-macbook" = home-manager.lib.homeManagerConfiguration {
         pkgs = overlayedPkgs."aarch64-darwin";
-        extraSpecialArgs = { inherit inputs; };
+        extraSpecialArgs = {inherit inputs;};
         modules = [
           ./home-manager/basic.nix
           ./home-manager/local.nix
@@ -110,10 +118,11 @@
 
       "nemo@cn-x01" = home-manager.lib.homeManagerConfiguration {
         pkgs = overlayedPkgs."x86_64-linux";
-        extraSpecialArgs = { inherit inputs; };
+        extraSpecialArgs = {inherit inputs;};
         modules = [
-          { targets.genericLinux.enable = true; }
+          {targets.genericLinux.enable = true;}
           ./home-manager/basic.nix
+          ./home-manager/remote.nix
           ./hosts/cn-x01/home.nix
           catppuccin.homeModules.catppuccin
         ];
@@ -130,8 +139,8 @@
 
     devShells = nixpkgs.lib.genAttrs devSystems (devSystem: {
       default = overlayedPkgs.${devSystem}.devshell.mkShell {
-        _module.args = { inherit inputs; };
-        imports = [ ./devshell ];
+        _module.args = {inherit inputs;};
+        imports = [./devshell];
       };
     });
   };

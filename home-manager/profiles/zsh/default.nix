@@ -1,6 +1,8 @@
-{ pkgs, lib, ... }:
-
 {
+  pkgs,
+  lib,
+  ...
+}: {
   programs.zsh = {
     enable = true;
     autocd = true;
@@ -63,10 +65,10 @@
       "LONG_LIST_JOBS"
       "PUSHD_IGNORE_DUPS"
       "PUSHD_MINUS"
-      "PROMPT_SUBST"      
+      "PROMPT_SUBST"
     ];
 
-    initContent = lib.mkMerge[
+    initContent = lib.mkMerge [
       (lib.mkBefore ''
         if [[ -r "''${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-''${(%):-%n}.zsh" ]]; then
           source "''${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-''${(%):-%n}.zsh"
@@ -84,7 +86,7 @@
         bindkey -M vicmd "w" vi-forward-word
         bindkey -M vicmd "d" vi-delete-char
         bindkey -M vicmd "x" hx-select-line
-        bindkey -M visual "d" vi-delete                 
+        bindkey -M visual "d" vi-delete
 
         zmodload -i zsh/complist
 
@@ -98,16 +100,20 @@
         zstyle ':completion:*' use-cache yes
         zstyle ':completion:*' cache-path "''${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump"
 
-        zstyle ':completion:*:*:*:users' ignored-patterns ${if pkgs.stdenv.isDarwin then "'_*'" else '' \
-                adm amanda apache at avahi avahi-autoipd beaglidx bin cacti canna \
-                clamav daemon dbus distcache dnsmasq dovecot fax ftp games gdm \
-                gkrellmd gopher hacluster haldaemon halt hsqldb ident junkbust kdm \
-                ldap lp mail mailman mailnull man messagebus mldonkey mysql nagios \
-                named netdump news nfsnobody nobody nscd ntp nut nx obsrun openvpn \
-                operator pcap polkitd postfix postgres privoxy pulse pvm quagga radvd \
-                rpc rpcuser rpm rtkit scard shutdown squid sshd statd svn sync tftp \
-                usbmux uucp vcsa wwwrun xfs '_*'
-              ''}
+        zstyle ':completion:*:*:*:users' ignored-patterns ${
+          if pkgs.stdenv.isDarwin
+          then "'_*'"
+          else ''            \
+                           adm amanda apache at avahi avahi-autoipd beaglidx bin cacti canna \
+                           clamav daemon dbus distcache dnsmasq dovecot fax ftp games gdm \
+                           gkrellmd gopher hacluster haldaemon halt hsqldb ident junkbust kdm \
+                           ldap lp mail mailman mailnull man messagebus mldonkey mysql nagios \
+                           named netdump news nfsnobody nobody nscd ntp nut nx obsrun openvpn \
+                           operator pcap polkitd postfix postgres privoxy pulse pvm quagga radvd \
+                           rpc rpcuser rpm rtkit scard shutdown squid sshd statd svn sync tftp \
+                           usbmux uucp vcsa wwwrun xfs '_*'
+          ''
+        }
 
         source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme
         source ${./p10k.zsh}

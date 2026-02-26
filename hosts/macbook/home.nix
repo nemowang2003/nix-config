@@ -1,6 +1,4 @@
-{ ... }:
-
-{
+{...}: {
   home.username = "nemo";
   home.homeDirectory = "/Users/nemo";
 

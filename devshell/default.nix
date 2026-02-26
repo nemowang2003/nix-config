@@ -1,14 +1,19 @@
-{ inputs, lib, pkgs, ... }: 
-
 {
-  packages = with pkgs; [
-    age
-    home-manager
-    sops
-    ssh-to-age
-  ] ++ lib.optionals stdenv.isDarwin [
-    inputs.darwin.packages.${pkgs.system}.default
-  ];
+  inputs,
+  lib,
+  pkgs,
+  ...
+}: {
+  packages = with pkgs;
+    [
+      age
+      home-manager
+      sops
+      ssh-to-age
+    ]
+    ++ lib.optionals stdenv.isDarwin [
+      inputs.darwin.packages.${pkgs.system}.default
+    ];
 
   env = [
     {
@@ -29,17 +34,20 @@
     {
       name = "rebuild";
       help = "system rebuild + home-manager switch";
-      command = if pkgs.stdenv.isDarwin then ''
-        set -x
-        sudo darwin-rebuild switch --flake "$PRJ_ROOT" && hms
-      '' else ''
-        if [[ -e /etc/NIXOS ]]; then
-          sudo nixos-rebuild switch --flake "$PRJ_ROOT" && hms
-        else
-          echo "Generic Linux detected, skipping system rebuild..."
-          hms
-        fi
-      '';
+      command =
+        if pkgs.stdenv.isDarwin
+        then ''
+          set -x
+          sudo darwin-rebuild switch --flake "$PRJ_ROOT" && hms
+        ''
+        else ''
+          if [[ -e /etc/NIXOS ]]; then
+            sudo nixos-rebuild switch --flake "$PRJ_ROOT" && hms
+          else
+            echo "Generic Linux detected, skipping system rebuild..."
+            hms
+          fi
+        '';
     }
     {
       name = "update";

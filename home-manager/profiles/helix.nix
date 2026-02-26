@@ -1,6 +1,4 @@
-{ lib, pkgs, ... }:
-
-{
+{pkgs, ...}: {
   # helix
   programs.helix = {
     enable = true;

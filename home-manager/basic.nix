@@ -1,7 +1,8 @@
-{ pkgs, lib, ... }:
-
 {
-  
+  pkgs,
+  lib,
+  ...
+}: {
   imports = [
     ./profiles/git.nix
     ./profiles/helix.nix
@@ -11,7 +12,6 @@
   config = lib.mkMerge [
     # base
     {
-
       catppuccin.enable = true;
       catppuccin.flavor = "mocha";
 
@@ -19,28 +19,35 @@
         packages = with pkgs; [
           cloudflared
           curl
+          darwin.trash
           python314
           tokei
           wget
         ];
 
-        shellAliases = {
-          "-"="cd -";
-          l = "ls -lh";
-          ll = "ls -lh";
-          la = "ls -lAh";
-        } // lib.optionalAttrs pkgs.stdenv.isDarwin {
-          ls = "ls -G";
-        } // lib.optionalAttrs (!pkgs.stdenv.isDarwin) {
-          ls = "ls --color=auto";
-        };
+        shellAliases =
+          {
+            "-" = "cd -";
+            l = "ls -lh";
+            ll = "ls -lh";
+            la = "ls -lAh";
+          }
+          // lib.optionalAttrs pkgs.stdenv.isDarwin {
+            ls = "ls -G";
+            rm = "trash";
+          }
+          // lib.optionalAttrs (!pkgs.stdenv.isDarwin) {
+            ls = "ls --color=auto";
+          };
 
-        sessionVariables = {
-          LESS = "-R";
-          LS_COLORS = "di=1;36:ln=35:so=32:pi=33:ex=31:bd=34;46:cd=34;43:su=30;41:sg=30;46:tw=30;42:ow=30;43";
-        } // lib.optionalAttrs pkgs.stdenv.isDarwin {
-          LSCOLORS = "Gxfxcxdxbxegedabagacad";
-        };
+        sessionVariables =
+          {
+            LESS = "-R";
+            LS_COLORS = "di=1;36:ln=35:so=32:pi=33:ex=31:bd=34;46:cd=34;43:su=30;41:sg=30;46:tw=30;42:ow=30;43";
+          }
+          // lib.optionalAttrs pkgs.stdenv.isDarwin {
+            LSCOLORS = "Gxfxcxdxbxegedabagacad";
+          };
       };
     }
 
@@ -79,7 +86,7 @@
         enable = true;
         icons = "auto";
       };
-    
+
       home.shellAliases = {
         ls = lib.mkForce "eza --group-directories-first";
         l = lib.mkForce "eza --long --header --group-directories-first";
@@ -98,17 +105,15 @@
       };
     }
 
-    { programs.fd.enable = true; }
+    {programs.fd.enable = true;}
 
     # fzf
     {
-      programs.fzf =
-      let
+      programs.fzf = let
         bat = lib.getExe pkgs.bat;
         eza = lib.getExe pkgs.eza;
         fd = lib.getExe pkgs.fd;
-      in
-      {
+      in {
         enable = true;
         enableZshIntegration = true;
 
@@ -140,7 +145,7 @@
       programs.zoxide = {
         enable = true;
         enableZshIntegration = true;
-        options = [ "--cmd j" ];
+        options = ["--cmd j"];
       };
     }
   ];

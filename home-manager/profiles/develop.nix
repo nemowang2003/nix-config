@@ -1,8 +1,10 @@
-{ pkgs, lib, ... }:
-
 {
+  pkgs,
+  lib,
+  ...
+}: {
   config = lib.mkMerge [
-    { programs.gh.enable = true; }
+    {programs.gh.enable = true;}
 
     # copilot
     {
@@ -15,13 +17,13 @@
         languages = [
           {
             name = "git-commit";
-            language-servers = [ "copilot" ];
+            language-servers = ["copilot"];
           }
         ];
       };
       # TODO: copilot install & config
     }
-  
+
     # nix
     {
       home.packages = with pkgs; [
@@ -56,7 +58,7 @@
                 "F" # pyflakes
                 "I" # isort
               ];
-              ignore = [ "E501" ];
+              ignore = ["E501"];
             };
           };
         };
@@ -67,11 +69,11 @@
           {
             name = "python";
             auto-format = true;
-            language-servers = [ "ruff" "helix-assist" ];
-            roots = [ "pyproject.toml" ];
+            language-servers = ["ruff" "copilot"];
+            roots = ["pyproject.toml"];
             formatter = {
               command = "sh";
-              args = [ "-c" "ruff check --fix-only - | ruff format -" ];
+              args = ["-c" "ruff check --fix-only - | ruff format -"];
             };
           }
         ];
