@@ -23,7 +23,7 @@
       help = "home-manager switch";
       command = ''
         set -x
-        home-manager switch --flake "$PRJ_ROOT"
+        home-manager switch --flake "$PRJ_ROOT" -b before-home-manager
       '';
     }
     {

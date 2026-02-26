@@ -45,23 +45,24 @@
       }
     );
   in {
-    nixosConfigurations = {
-      "ian-linuxdesktop" = nixpkgs.lib.nixosSystem {
-        specialArgs = { inherit inputs; };
-        modules = [
-          ./hosts/linux-desktop/system.nix
-          catppuccin.nixosModules.catppuccin
-        ];
-      };
+    # TODO
+    # nixosConfigurations = {
+    #   "ian-linuxdesktop" = nixpkgs.lib.nixosSystem {
+    #     specialArgs = { inherit inputs; };
+    #     modules = [
+    #       ./hosts/linux-desktop/system.nix
+    #       catppuccin.nixosModules.catppuccin
+    #     ];
+    #   };
 
-      "ian-windowsdesktop" = nixpkgs.lib.nixosSystem {
-        specialArgs = { inherit inputs; };
-        modules = [
-          ./hosts/windows-desktop/system.nix
-          catppuccin.nixosModules.catppuccin
-        ];
-      };
-    };
+    #   "ian-windowsdesktop" = nixpkgs.lib.nixosSystem {
+    #     specialArgs = { inherit inputs; };
+    #     modules = [
+    #       ./hosts/windows-desktop/system.nix
+    #       catppuccin.nixosModules.catppuccin
+    #     ];
+    #   };
+    # };
 
     darwinConfigurations = {
       "ian-macbook" = darwin.lib.darwinSystem {
@@ -84,24 +85,36 @@
         ];
       };
 
-      "nemo@ian-linuxdesktop" = home-manager.lib.homeManagerConfiguration {
-        pkgs = overlayedPkgs."x86_64-linux";
-        extraSpecialArgs = { inherit inputs; };
-        modules = [
-          ./home-manager/basic.nix
-          ./home-manager/local.nix
-          ./hosts/linux-desktop/home.nix
-          catppuccin.homeModules.catppuccin
-        ];
-      };
+      # TODO
+      # "nemo@ian-linuxdesktop" = home-manager.lib.homeManagerConfiguration {
+      #   pkgs = overlayedPkgs."x86_64-linux";
+      #   extraSpecialArgs = { inherit inputs; };
+      #   modules = [
+      #     ./home-manager/basic.nix
+      #     ./home-manager/local.nix
+      #     ./hosts/linux-desktop/home.nix
+      #     catppuccin.homeModules.catppuccin
+      #   ];
+      # };
 
-      "nemo@ian-windowsdesktop" = home-manager.lib.homeManagerConfiguration {
+      # "nemo@ian-windowsdesktop" = home-manager.lib.homeManagerConfiguration {
+      #   pkgs = overlayedPkgs."x86_64-linux";
+      #   extraSpecialArgs = { inherit inputs; };
+      #   modules = [
+      #     ./home-manager/basic.nix
+      #     ./home-manager/local.nix
+      #     ./hosts/windows-desktop/home.nix
+      #     catppuccin.homeModules.catppuccin
+      #   ];
+      # };
+
+      "nemo@cn-x01" = home-manager.lib.homeManagerConfiguration {
         pkgs = overlayedPkgs."x86_64-linux";
         extraSpecialArgs = { inherit inputs; };
         modules = [
+          { targets.genericLinux.enable = true; }
           ./home-manager/basic.nix
-          ./home-manager/local.nix
-          ./hosts/windows-desktop/home.nix
+          ./hosts/cn-x01/home.nix
           catppuccin.homeModules.catppuccin
         ];
       };
