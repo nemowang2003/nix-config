@@ -10,7 +10,12 @@
   nix.enable = false;
   nixpkgs.hostPlatform = "aarch64-darwin";
 
-  programs.zsh.enable = true;
+  programs.zsh = {
+    enableBashCompletion = false;
+    enableCompletion = false;
+    promptInit = "";
+  };
+
   environment = {
     etc."nix/nix.custom.conf".text = ''
       substituters = https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store https://mirrors.ustc.edu.cn/nix-channels/store https://cache.nixos.org

@@ -16,14 +16,17 @@
       catppuccin.flavor = "mocha";
 
       home = {
-        packages = with pkgs; [
-          cloudflared
-          curl
-          darwin.trash
-          python314
-          tokei
-          wget
-        ];
+        packages = with pkgs;
+          [
+            cloudflared
+            curl
+            python314
+            tokei
+            wget
+          ]
+          ++ lib.optionals stdenv.isDarwin [
+            darwin.trash
+          ];
 
         shellAliases =
           {
