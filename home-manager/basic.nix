@@ -102,13 +102,13 @@
 
     # fastfetch
     {
-      programs.fastfetch = {
-        enable = true;
-        package = pkgs.fastfetchMinimal;
-      };
+      home.shellAliases.fastfetch = "nix run nixpkgs#fastfetchMinimal --";
     }
 
-    {programs.fd.enable = true;}
+    # fd
+    {
+      programs.fd.enable = true;
+    }
 
     # fzf
     {
