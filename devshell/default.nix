@@ -54,7 +54,7 @@
       help = "nix flake update";
       command = ''
         set -x
-        nix flake update && rebuild
+        nix flake update && git commit --all -m "update: $(date +%Y-%m-%d)" && rebuild
       '';
     }
   ];
