@@ -64,6 +64,7 @@
       "iterm2"
       "karabiner-elements"
       "mac-mouse-fix"
+      "obs"
       "obsidian"
       "qq"
       "raycast"

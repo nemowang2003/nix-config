@@ -93,28 +93,29 @@
         ];
       };
 
-      # TODO
-      # "nemo@ian-linuxdesktop" = home-manager.lib.homeManagerConfiguration {
-      #   pkgs = overlayedPkgs."x86_64-linux";
-      #   extraSpecialArgs = { inherit inputs; };
-      #   modules = [
-      #     ./home-manager/basic.nix
-      #     ./home-manager/local.nix
-      #     ./hosts/linux-desktop/home.nix
-      #     catppuccin.homeModules.catppuccin
-      #   ];
-      # };
+      # NixOS WSL
+      "nemo@dt-w01" = home-manager.lib.homeManagerConfiguration {
+        pkgs = overlayedPkgs."x86_64-linux";
+        extraSpecialArgs = {inherit inputs;};
+        modules = [
+          ./home-manager/basic.nix
+          ./home-manager/local.nix
+          ./hosts/dt-w01/home.nix
+          catppuccin.homeModules.catppuccin
+        ];
+      };
 
-      # "nemo@ian-windowsdesktop" = home-manager.lib.homeManagerConfiguration {
-      #   pkgs = overlayedPkgs."x86_64-linux";
-      #   extraSpecialArgs = { inherit inputs; };
-      #   modules = [
-      #     ./home-manager/basic.nix
-      #     ./home-manager/local.nix
-      #     ./hosts/windows-desktop/home.nix
-      #     catppuccin.homeModules.catppuccin
-      #   ];
-      # };
+      # (native) NixOS Desktop
+      "nemo@dt-l01" = home-manager.lib.homeManagerConfiguration {
+        pkgs = overlayedPkgs."x86_64-linux";
+        extraSpecialArgs = {inherit inputs;};
+        modules = [
+          ./home-manager/basic.nix
+          ./home-manager/local.nix
+          ./hosts/dt-l01/home.nix
+          catppuccin.homeModules.catppuccin
+        ];
+      };
 
       "nemo@cn-x01" = home-manager.lib.homeManagerConfiguration {
         pkgs = overlayedPkgs."x86_64-linux";
