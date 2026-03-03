@@ -1,13 +1,13 @@
 {pkgs, ...}: {
-  # helix
   programs.helix = {
     enable = true;
     defaultEditor = true;
 
     settings = {
       editor = {
-        line-number = "relative";
         cursorline = true;
+        line-number = "relative";
+        true-color = true;
       };
     };
 

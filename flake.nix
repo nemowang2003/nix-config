@@ -123,7 +123,6 @@
         modules = [
           {targets.genericLinux.enable = true;}
           ./home-manager/basic.nix
-          ./home-manager/remote.nix
           ./hosts/cn-x01/home.nix
           catppuccin.homeModules.catppuccin
         ];
