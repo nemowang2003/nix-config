@@ -6,8 +6,19 @@
   config = lib.mkMerge [
     {programs.gh.enable = true;}
 
-    # copilot
+    # ai-releated
     {
+      programs.mcp.enable = true;
+
+      programs.claude-code = {
+        enable = true;
+        enableMcpIntegration = true;
+        settings = {
+          theme = "dark";
+          permissions.defaultMode = "bypassPermissions";
+        };
+      };
+
       programs.helix.languages = {
         language-server.copilot = {
           command = "helix-assist";
@@ -26,27 +37,32 @@
 
     # nix
     {
-      home.packages = with pkgs; [
-        alejandra
-        nixd
-      ];
-
       programs = {
-        helix.languages.language = [
-          {
-            name = "nix";
-            auto-format = true;
-            formatter = {
-              command = "alejandra";
-            };
-          }
-        ];
+        helix.languages = {
+          language-server.nixd.command = lib.getExe pkgs.nixd;
+          language = [
+            {
+              name = "nix";
+              auto-format = true;
+              language-servers = ["nixd"];
+              formatter = {
+                command = lib.getExe pkgs.alejandra;
+              };
+            }
+          ];
+        };
       };
     }
 
     # python
     {
       programs = {
+        mcp.servers.python-lsp = {
+          type = "stdio";
+          command = lib.getExe pkgs.ty;
+          args = ["server"];
+        };
+
         ruff = {
           enable = true;
           settings = {
@@ -63,20 +79,33 @@
           };
         };
 
-        uv.enable = true;
-
-        helix.languages.language = [
-          {
-            name = "python";
-            auto-format = true;
-            language-servers = ["ruff" "copilot"];
-            roots = ["pyproject.toml"];
-            formatter = {
-              command = "sh";
-              args = ["-c" "ruff check --fix-only - | ruff format -"];
+        uv = {
+          enable = true;
+          settings = {
+            python-downloads = "never";
+            python-preference = "only-system";
+          };
+        };
+        helix.languages = {
+          language-server = {
+            ty = {
+              command = lib.getExe pkgs.ty;
+              args = ["server"];
             };
-          }
-        ];
+          };
+          language = [
+            {
+              name = "python";
+              auto-format = true;
+              language-servers = ["ty" "ruff" "copilot"];
+              roots = ["pyproject.toml"];
+              formatter = {
+                command = "sh";
+                args = ["-c" "ruff check --fix-only - | ruff format -"];
+              };
+            }
+          ];
+        };
       };
 
       home.shellAliases = {
