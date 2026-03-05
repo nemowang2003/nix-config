@@ -38,6 +38,7 @@
     devSystems = [
       "aarch64-darwin"
       "x86_64-linux"
+      "aarch64-linux"
     ];
 
     overlayedPkgs = let
@@ -124,6 +125,17 @@
           {targets.genericLinux.enable = true;}
           ./home-manager/basic.nix
           ./hosts/cn-x01/home.nix
+          catppuccin.homeModules.catppuccin
+        ];
+      };
+
+      "nemo@sg-a01" = home-manager.lib.homeManagerConfiguration {
+        pkgs = overlayedPkgs."aarch64-linux";
+        extraSpecialArgs = {inherit inputs;};
+        modules = [
+          {targets.genericLinux.enable = true;}
+          ./home-manager/basic.nix
+          ./hosts/sg-a01/home.nix
           catppuccin.homeModules.catppuccin
         ];
       };
