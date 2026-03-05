@@ -6,6 +6,7 @@
   imports = [
     ./profiles/git.nix
     ./profiles/helix.nix
+    ./profiles/ssh.nix
     ./profiles/zsh
   ];
 
