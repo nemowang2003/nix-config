@@ -5,7 +5,6 @@
 }: {
   imports = [
     ./profiles/develop.nix
-    # Broken
-    # ./profiles/yt-dlp.nix
+    ./profiles/yt-dlp.nix
   ];
 }
