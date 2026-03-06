@@ -4,9 +4,11 @@
   ...
 }: {
   imports = [
+    ./profiles/develop.nix
     ./profiles/git.nix
     ./profiles/helix.nix
     ./profiles/ssh.nix
+    ./profiles/yt-dlp.nix
     ./profiles/zsh
   ];
 

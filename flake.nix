@@ -88,7 +88,6 @@
         extraSpecialArgs = {inherit inputs;};
         modules = [
           ./home-manager/basic.nix
-          ./home-manager/local.nix
           ./hosts/macbook/home.nix
           catppuccin.homeModules.catppuccin
         ];
@@ -100,7 +99,6 @@
         extraSpecialArgs = {inherit inputs;};
         modules = [
           ./home-manager/basic.nix
-          ./home-manager/local.nix
           ./hosts/dt-w01/home.nix
           catppuccin.homeModules.catppuccin
         ];
@@ -112,7 +110,6 @@
         extraSpecialArgs = {inherit inputs;};
         modules = [
           ./home-manager/basic.nix
-          ./home-manager/local.nix
           ./hosts/dt-l01/home.nix
           catppuccin.homeModules.catppuccin
         ];
