@@ -37,6 +37,7 @@
             l = "ls -lh";
             ll = "ls -lh";
             la = "ls -lAh";
+            diff = "diff --color";
           }
           // lib.optionalAttrs pkgs.stdenv.isDarwin {
             ls = "ls -G";

@@ -27,6 +27,15 @@
     };
   };
 
+  programs.delta = {
+    enable = true;
+    enableGitIntegration = true;
+    options = {
+      side-by-side = true;
+      line-numbers = true;
+    };
+  };
+
   home.shellAliases = {
     g = "git";
     ga = "git add";
