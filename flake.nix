@@ -74,21 +74,21 @@
     # };
 
     darwinConfigurations = {
-      "ian-macbook" = darwin.lib.darwinSystem {
+      "nb-d01" = darwin.lib.darwinSystem {
         specialArgs = {inherit inputs;};
         modules = [
-          ./hosts/macbook/system.nix
+          ./hosts/nb-d01/system.nix
         ];
       };
     };
 
     homeConfigurations = {
-      "nemo@ian-macbook" = home-manager.lib.homeManagerConfiguration {
+      "nemo@nb-d01" = home-manager.lib.homeManagerConfiguration {
         pkgs = overlayedPkgs."aarch64-darwin";
         extraSpecialArgs = {inherit inputs;};
         modules = [
           ./home-manager/basic.nix
-          ./hosts/macbook/home.nix
+          ./hosts/nb-d01/home.nix
           catppuccin.homeModules.catppuccin
         ];
       };

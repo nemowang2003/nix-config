@@ -3,12 +3,14 @@
   inputs,
   ...
 }: {
-  imports = [
-    inputs.home-manager.darwinModules.home-manager
-  ];
-
   nix.enable = false;
   nixpkgs.hostPlatform = "aarch64-darwin";
+
+  networking = {
+    hostName = "nb-d01";
+    localHostName = "nb-d01";
+    computerName = "Ian's MacBook Air";
+  };
 
   programs.zsh = {
     enableBashCompletion = false;
@@ -35,6 +37,10 @@
       echo "restarting determinate nix daemon ..."
       launchctl kickstart -k system/systems.determinate.nix-daemon
     '';
+
+    defaults = {
+      # TODO
+    };
   };
 
   users.users.nemo = {
