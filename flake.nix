@@ -3,6 +3,17 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    nixpkgs-uv-darwin.url = "github:nixos/nixpkgs/f59e980846fe86cd831899cd032fdbd1d6054086";
+    nixpkgs-tombi-darwin.url = "github:nixos/nixpkgs/74db1477155674a4c3e18de28628f24eba310ebf";
+
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    flake-parts.inputs.nixpkgs-lib.follows = "nixpkgs";
+
+    haumea.url = "github:nix-community/haumea";
+    haumea.inputs.nixpkgs.follows = "nixpkgs";
+
+    deploy-rs.url = "github:serokell/deploy-rs";
+    deploy-rs.inputs.nixpkgs.follows = "nixpkgs";
 
     darwin.url = "github:lnl7/nix-darwin";
     darwin.inputs.nixpkgs.follows = "nixpkgs";
@@ -20,137 +31,14 @@
     sops-nix.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = {
-    self,
-    nixpkgs,
-    home-manager,
-    darwin,
-    catppuccin,
-    devshell,
-    ...
-  } @ inputs: let
-    systems = [
-      "aarch64-darwin"
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
-
-    devSystems = [
-      "aarch64-darwin"
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
-
-    overlayedPkgs = let
-      overlays = [
-        devshell.overlays.default
+  outputs = {flake-parts, ...} @ inputs:
+    flake-parts.lib.mkFlake {inherit inputs;} {
+      imports = [
+        ./flake/devshell.nix
+        ./flake/nixpkgs.nix
+        ./flake/hosts.nix
+        ./flake/configurations.nix
+        ./flake/deploy-rs.nix
       ];
-    in
-      nixpkgs.lib.genAttrs systems (
-        system:
-          import nixpkgs {
-            inherit system overlays;
-            config.allowUnfree = true;
-          }
-      );
-  in {
-    # TODO
-    # nixosConfigurations = {
-    #   "ian-linuxdesktop" = nixpkgs.lib.nixosSystem {
-    #     specialArgs = { inherit inputs; };
-    #     modules = [
-    #       ./hosts/linux-desktop/system.nix
-    #       catppuccin.nixosModules.catppuccin
-    #     ];
-    #   };
-
-    #   "ian-windowsdesktop" = nixpkgs.lib.nixosSystem {
-    #     specialArgs = { inherit inputs; };
-    #     modules = [
-    #       ./hosts/windows-desktop/system.nix
-    #       catppuccin.nixosModules.catppuccin
-    #     ];
-    #   };
-    # };
-
-    darwinConfigurations = {
-      "nb-d01" = darwin.lib.darwinSystem {
-        specialArgs = {inherit inputs;};
-        modules = [
-          ./hosts/nb-d01/system.nix
-        ];
-      };
     };
-
-    homeConfigurations = {
-      "nemo@nb-d01" = home-manager.lib.homeManagerConfiguration {
-        pkgs = overlayedPkgs."aarch64-darwin";
-        extraSpecialArgs = {inherit inputs;};
-        modules = [
-          ./home-manager/basic.nix
-          ./hosts/nb-d01/home.nix
-          catppuccin.homeModules.catppuccin
-        ];
-      };
-
-      # NixOS WSL
-      "nemo@dt-w01" = home-manager.lib.homeManagerConfiguration {
-        pkgs = overlayedPkgs."x86_64-linux";
-        extraSpecialArgs = {inherit inputs;};
-        modules = [
-          ./home-manager/basic.nix
-          ./hosts/dt-w01/home.nix
-          catppuccin.homeModules.catppuccin
-        ];
-      };
-
-      # (native) NixOS Desktop
-      "nemo@dt-l01" = home-manager.lib.homeManagerConfiguration {
-        pkgs = overlayedPkgs."x86_64-linux";
-        extraSpecialArgs = {inherit inputs;};
-        modules = [
-          ./home-manager/basic.nix
-          ./hosts/dt-l01/home.nix
-          catppuccin.homeModules.catppuccin
-        ];
-      };
-
-      "nemo@cn-x01" = home-manager.lib.homeManagerConfiguration {
-        pkgs = overlayedPkgs."x86_64-linux";
-        extraSpecialArgs = {inherit inputs;};
-        modules = [
-          {targets.genericLinux.enable = true;}
-          ./home-manager/basic.nix
-          ./hosts/cn-x01/home.nix
-          catppuccin.homeModules.catppuccin
-        ];
-      };
-
-      "nemo@sg-a01" = home-manager.lib.homeManagerConfiguration {
-        pkgs = overlayedPkgs."aarch64-linux";
-        extraSpecialArgs = {inherit inputs;};
-        modules = [
-          {targets.genericLinux.enable = true;}
-          ./home-manager/basic.nix
-          ./hosts/sg-a01/home.nix
-          catppuccin.homeModules.catppuccin
-        ];
-      };
-
-      # TODO: generic linux
-      # modules = [
-      #   { targets.genericLinux.enable = true; }
-      #   ./home-manager/basic.nix
-      #   ./hosts/.../home.nix
-      #   catppuccin.homeModules.catppuccin
-      # ];
-    };
-
-    devShells = nixpkgs.lib.genAttrs devSystems (devSystem: {
-      default = overlayedPkgs.${devSystem}.devshell.mkShell {
-        _module.args = {inherit inputs;};
-        imports = [./devshell];
-      };
-    });
-  };
 }
