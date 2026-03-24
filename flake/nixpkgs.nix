@@ -19,8 +19,6 @@
               packages)
         );
       in [
-        (mkDarwinOverlays ["uv"] inputs.nixpkgs-uv-darwin)
-        (mkDarwinOverlays ["tombi"] inputs.nixpkgs-tombi-darwin)
         # overlays: more ovelays here
       ];
     };
