@@ -106,7 +106,10 @@
 
     # fastfetch
     {
-      home.shellAliases.fastfetch = "nix run nixpkgs#fastfetchMinimal --";
+      programs.fastfetch = {
+        enable = true;
+        package = pkgs.fastfetchMinimal;
+      };
     }
 
     # fd
@@ -144,7 +147,12 @@
 
       programs.jq.enable = true;
       programs.ripgrep.enable = true;
-      programs.tmux.enable = true;
+      programs.tmux = {
+        enable = true;
+        baseIndex = 1;
+        terminal = "screen-256color";
+        mouse = true;
+      };
     }
 
     # zoxide

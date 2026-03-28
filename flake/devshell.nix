@@ -65,6 +65,7 @@
           help = "nix flake update and auto-commit";
           command = ''
             set -x
+            ${lib.optionalString pkgs.stdenv.isDarwin "ulimit -n 4096"}
             nix flake update && git commit flake.lock -m "update: $(date +%Y-%m-%d)" && rebuild
           '';
         }
