@@ -1,90 +1,19 @@
-{
-  pkgs,
-  inputs,
-  ...
-}: {
-  nix.enable = false;
-  nixpkgs.hostPlatform = "aarch64-darwin";
+{...}: {
+  networking.computerName = "Ian's MacBook Air";
 
-  networking = {
-    hostName = "nb-d01";
-    localHostName = "nb-d01";
-    computerName = "Ian's MacBook Air";
-  };
-
-  programs.zsh = {
-    enableBashCompletion = false;
-    enableCompletion = false;
-    promptInit = "";
-  };
-
-  environment = {
-    etc."nix/nix.custom.conf".text = ''
-      substituters = https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store https://mirrors.ustc.edu.cn/nix-channels/store https://cache.nixos.org
-    '';
-    shells = [pkgs.zsh];
-    variables = {
-      HOMEBREW_API_DOMAIN = "https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api";
-    };
-  };
-
-  security.pam.services.sudo_local.touchIdAuth = true;
-
-  system = {
-    primaryUser = "nemo";
-
-    activationScripts.postActivation.text = ''
-      echo "restarting determinate nix daemon ..."
-      launchctl kickstart -k system/systems.determinate.nix-daemon
-    '';
-
-    defaults = {
-      # TODO
-    };
-  };
-
-  users.users.nemo = {
-    name = "nemo";
-    home = "/Users/nemo";
-    shell = pkgs.zsh;
-  };
-
-  homebrew = {
-    enable = true;
-    enableZshIntegration = true;
-
-    onActivation = {
-      extraFlags = ["--verbose"];
-      cleanup = "zap";
-    };
-
-    global.autoUpdate = false;
-
-    casks = [
-      "android-platform-tools"
-      "bitwarden"
-      "clash-verge-rev"
-      "google-chrome"
-      "hammerspoon"
-      "iina"
-      "iterm2"
-      "karabiner-elements"
-      "mac-mouse-fix"
-      "obs"
-      "obsidian"
-      "qq"
-      "raycast"
-      "steam"
-      "tailscale-app"
-      "tencent-lemon"
-      "tencent-meeting"
-      "the-unarchiver"
-      "visual-studio-code"
-      "wechat"
-      "windows-app"
-      "wpsoffice-cn"
-    ];
-  };
+  homebrew.casks = [
+    "android-platform-tools"
+    "bitwarden"
+    "obs"
+    "obsidian"
+    "qq"
+    "steam"
+    "tencent-meeting"
+    "visual-studio-code"
+    "wechat"
+    "windows-app"
+    "wpsoffice-cn"
+  ];
 
   system.stateVersion = 6;
 }

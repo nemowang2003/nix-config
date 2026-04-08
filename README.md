@@ -3,4 +3,4 @@
 - sops
   - sensitive env
   - per host configuration
-- nixos system
+- hardware of nixos system

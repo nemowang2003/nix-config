@@ -13,7 +13,6 @@
       packages = with pkgs;
         [
           age
-          deploy-rs
           home-manager
           sops
           ssh-to-age

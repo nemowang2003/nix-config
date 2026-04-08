@@ -1,9 +1,13 @@
 {
+  inputs,
   pkgs,
   lib,
+  hostname,
+  cfg,
   ...
 }: {
   imports = [
+    inputs.catppuccin.homeModules.catppuccin
     ./profiles/develop.nix
     ./profiles/git.nix
     ./profiles/helix.nix
@@ -15,10 +19,18 @@
   config = lib.mkMerge [
     # base
     {
+      targets.genericLinux.enable = cfg.generic;
+
       catppuccin.enable = true;
       catppuccin.flavor = "mocha";
 
       home = {
+        username = cfg.user;
+        homeDirectory =
+          if pkgs.stdenv.isDarwin
+          then "/Users/${cfg.user}"
+          else "/home/${cfg.user}";
+
         packages = with pkgs;
           [
             cloudflared

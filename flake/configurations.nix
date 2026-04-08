@@ -1,82 +1,72 @@
 {
+  self,
   inputs,
   lib,
   getSystem,
-  hosts,
   ...
 }: let
   mkDarwin = hostname: cfg:
     inputs.darwin.lib.darwinSystem {
       system = cfg.arch;
       pkgs = (getSystem cfg.arch).allModuleArgs.pkgs;
-      specialArgs = {inherit inputs hostname;};
-      modules = [
-        {
-          networking = {
-            hostName = hostname;
-            localHostName = hostname;
-          };
-          system.primaryUser = cfg.user;
-          users.users.${cfg.user} = {
-            name = cfg.user;
-            home = "/Users/${cfg.user}";
-          };
-        }
-        ../hosts/${hostname}/darwin.nix
-      ];
+      specialArgs = {inherit inputs hostname cfg;};
+      modules =
+        [
+          ../darwin/common.nix
+          ../hosts/${hostname}/darwin.nix
+        ]
+        ++ lib.optionals cfg.determinate [../darwin/determinate.nix];
     };
 
   mkNixOS = hostname: cfg:
     lib.nixosSystem {
       system = cfg.arch;
       pkgs = (getSystem cfg.arch).allModuleArgs.pkgs;
-      specialArgs = {inherit inputs hostname;};
+      specialArgs = {inherit inputs hostname cfg;};
       modules = [
-        {
-          users.users.${cfg.user} = {
-            isNormalUser = true;
-            home = "/home/${cfg.user}";
-            extraGroups = [
-              "wheel"
-              "networkmanager"
-            ];
-          };
-        }
+        ../nixos/${cfg.platform}.nix
+        ../nixos/common.nix
         ../hosts/${hostname}/nixos.nix
-        inputs.catppuccin.nixosModules.catppuccin
       ];
     };
 
   mkHome = hostname: cfg:
     inputs.home-manager.lib.homeManagerConfiguration {
       pkgs = (getSystem cfg.arch).allModuleArgs.pkgs;
-      extraSpecialArgs = {inherit inputs;};
+      extraSpecialArgs = {inherit inputs hostname cfg;};
       modules = [
-        ../home-manager/basic.nix
+        ../home-manager/common.nix
         ../hosts/${hostname}/home.nix
-        inputs.catppuccin.homeModules.catppuccin
-        {targets.genericLinux.enable = cfg.generic;}
       ];
     };
 in {
-  flake = let
-    isDarwin = arch: (lib.systems.elaborate arch).isDarwin;
-    isLinux = arch: (lib.systems.elaborate arch).isLinux;
-  in {
-    darwinConfigurations = lib.mapAttrs (
-      hostname: cfg:
-        mkDarwin hostname cfg
-    ) (lib.filterAttrs (hostname: cfg: isDarwin cfg.arch) hosts);
-    nixosConfigurations = lib.mapAttrs (
-      hostname: cfg:
-        mkNixOS hostname cfg
-    ) (lib.filterAttrs (hostname: cfg: isLinux cfg.arch && !cfg.generic) hosts);
+  flake = {
+    darwinConfigurations =
+      lib.mapAttrs
+      (hostname: cfg: mkDarwin hostname cfg)
+      (
+        lib.filterAttrs
+        (hostname: cfg: self.lib.arch.isDarwin cfg.arch)
+        self.hosts
+      );
+
+    nixosConfigurations =
+      lib.mapAttrs
+      (hostname: cfg: mkNixOS hostname cfg)
+      (
+        lib.filterAttrs
+        (hostname: cfg: self.lib.arch.isLinux cfg.arch && !cfg.generic)
+        self.hosts
+      );
 
     homeConfigurations =
-      lib.mapAttrs' (
+      lib.mapAttrs'
+      (
         hostname: cfg:
-          lib.nameValuePair "${cfg.user}@${hostname}" (mkHome hostname cfg)
+          lib.nameValuePair
+          "${cfg.user}@${hostname}"
+          (mkHome hostname cfg)
       )
-      hosts;
+      self.hosts;
   };
 }

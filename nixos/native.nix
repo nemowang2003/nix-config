@@ -1,0 +1,8 @@
+{
+  inputs,
+  hostname,
+  cfg,
+  ...
+}: {
+  # TODO
+}

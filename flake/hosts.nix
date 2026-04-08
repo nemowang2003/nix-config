@@ -3,20 +3,21 @@
     default = {
       arch = "x86_64-linux";
       user = "nemo";
-      deploy = true;
-      generic = false;
+      domestic = true;
+      determinate = true; # for darwin
+      generic = false; # for linux
+      platform = "native"; # for linux
     };
   in {
     "nb-d01" =
       default
       // {
         arch = "aarch64-darwin";
-        deploy = false;
       };
-    "dt-l01" =
+    "dt-w01" =
       default
       // {
-        deploy = false;
+        platform = "wsl";
       };
     "cn-x01" =
       default
@@ -27,11 +28,12 @@
       default
       // {
         arch = "aarch64-linux";
+        domestic = false;
         generic = true;
       };
-    # hostRegistry: more hosts here
+    # hosts: more hosts here
   };
 in {
-  _module.args.hosts = hosts;
+  flake.hosts = hosts;
   systems = lib.unique (lib.catAttrs "arch" (builtins.attrValues hosts));
 }
