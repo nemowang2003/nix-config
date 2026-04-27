@@ -2,6 +2,7 @@
   lib,
   pkgs,
   hostname,
+  userPubkeys,
   cfg,
   ...
 }: {
@@ -17,6 +18,7 @@
       users.users.${cfg.user} = {
         name = cfg.user;
         home = "/Users/${cfg.user}";
+        openssh.authorizedKeys.keys = userPubkeys;
       };
 
       system = {

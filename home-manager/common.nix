@@ -2,7 +2,6 @@
   inputs,
   pkgs,
   lib,
-  hostname,
   cfg,
   ...
 }: {
@@ -19,7 +18,7 @@
   config = lib.mkMerge [
     # base
     {
-      targets.genericLinux.enable = cfg.generic;
+      targets.genericLinux.enable = cfg.platform == "generic";
 
       catppuccin.enable = true;
       catppuccin.flavor = "mocha";

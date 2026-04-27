@@ -1,6 +1,5 @@
 {
   inputs,
-  hostname,
   cfg,
   ...
 }: {
@@ -8,6 +7,9 @@
     inputs.nixos-wsl.nixosModules.default
   ];
 
-  wsl.enable = true;
-  wsl.defaultUser = cfg.user;
+  wsl = {
+    enable = true;
+    defaultUser = cfg.user;
+    useWindowsDriver = true;
+  };
 }

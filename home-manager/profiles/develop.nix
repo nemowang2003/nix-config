@@ -13,10 +13,6 @@
       programs.claude-code = {
         enable = true;
         enableMcpIntegration = true;
-        settings = {
-          theme = "dark";
-          permissions.defaultMode = "bypassPermissions";
-        };
       };
 
       programs.helix.languages = {

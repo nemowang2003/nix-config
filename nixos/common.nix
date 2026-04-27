@@ -2,6 +2,7 @@
   inputs,
   lib,
   pkgs,
+  userPubkeys,
   hostname,
   cfg,
   ...
@@ -54,9 +55,7 @@
       "wheel"
       "networkmanager"
     ];
-    openssh.authorizedKeys.keys = [
-      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGool/VQtM3LIxS/UJzur+yOvP4jMNES2WezxxlQwvns nemo@Ians-MacBook-Air.local"
-    ];
+    openssh.authorizedKeys.keys = userPubkeys;
   };
 
   programs.zsh = {

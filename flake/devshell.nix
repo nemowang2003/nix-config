@@ -13,7 +13,9 @@
       packages = with pkgs;
         [
           age
+          gh
           home-manager
+          jq
           sops
           ssh-to-age
         ]
@@ -31,7 +33,7 @@
       commands = [
         {
           name = "hms";
-          category = "management";
+          category = "deployment";
           help = "home-manager switch";
           command = ''
             set -x
@@ -40,7 +42,7 @@
         }
         {
           name = "rebuild";
-          category = "management";
+          category = "deployment";
           help = "system rebuild + home-manager switch";
           command =
             if pkgs.stdenv.isDarwin
@@ -60,12 +62,26 @@
         }
         {
           name = "update";
-          category = "management";
-          help = "nix flake update and auto-commit";
+          category = "deployment";
+          help = "nix flake update";
           command = ''
             set -x
             ${lib.optionalString pkgs.stdenv.isDarwin "ulimit -n 4096"}
-            nix flake update && git commit flake.lock -m "update: $(date +%Y-%m-%d)" && rebuild
+            nix flake update && rebuild
+          '';
+        }
+        {
+          name = "gh-keysync";
+          category = "authentication";
+          help = "gh ssh-key add";
+          command = ''
+            set -x
+            set -e
+            nix eval "$PRJ_ROOT"#hosts --json | jq -r 'to_entries[] | select(.value.userPubkey != null) | .value.userPubkey + " " + .key' | while read -r pubkey type comment name; do
+              key="$pubkey $type $comment"
+              gh ssh-key add - --title "''${name}" <<< "''${key}"
+              gh ssh-key add - --type signing --title "''${name}" <<< "''${key}"
+            done
           '';
         }
       ];

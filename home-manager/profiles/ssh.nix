@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  userPubkeys,
   ...
 }: let
   nc = lib.getExe pkgs.netcat;
@@ -41,6 +42,9 @@ in {
   home.activation = {
     createSshSocketDir = lib.hm.dag.entryAfter ["writeBoundary"] ''
       $DRY_RUN_CMD mkdir -m 700 -p $VERBOSE_ARG ${config.home.homeDirectory}/.ssh/sockets
+    '';
+    writeAuthorizedKeysFile = lib.hm.dag.entryAfter ["writeBoundary"] ''
+      $DRY_RUN_CMD env
     '';
   };
 }
