@@ -33,7 +33,15 @@
     inputs.flake-parts.lib.mkFlake {inherit inputs;} {
       imports = builtins.attrValues (inputs.haumea.lib.load {
         src = ./flake;
-        loader = inputs.haumea.lib.loaders.verbatim;
+        loader = inputs.haumea.lib.loaders.path;
+        transformer = [
+          (
+            cursor: dir:
+              if dir ? default
+              then dir.default
+              else dir
+          )
+        ];
       });
     };
 }

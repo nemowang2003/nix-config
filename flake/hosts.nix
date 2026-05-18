@@ -39,7 +39,11 @@
     };
     # hosts: more hosts here
   };
+  userPubkeys =
+    lib.mapAttrsToList
+    (hostname: cfg: cfg.userPubkey)
+    (lib.filterAttrs (hostname: cfg: cfg.userPubkey != null) hosts);
 in {
-  flake = {inherit hosts;};
+  flake = {inherit hosts userPubkeys;};
   systems = lib.unique (lib.catAttrs "arch" (builtins.attrValues hosts));
 }

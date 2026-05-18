@@ -5,174 +5,76 @@
   cfg,
   ...
 }: {
-  imports = [
-    inputs.catppuccin.homeModules.catppuccin
-    ./profiles/develop.nix
-    ./profiles/git.nix
-    ./profiles/helix.nix
-    ./profiles/ssh.nix
-    ./profiles/yt-dlp.nix
-    ./profiles/zsh
-  ];
+  imports =
+    [
+      inputs.catppuccin.homeModules.catppuccin
+    ]
+    ++ builtins.attrValues (inputs.haumea.lib.load {
+      src = ./profiles;
+      loader = inputs.haumea.lib.loaders.path;
+      transformer = [
+        (
+          cursor: dir:
+            if dir ? default
+            then dir.default
+            else dir
+        )
+      ];
+    });
 
-  config = lib.mkMerge [
-    # base
-    {
-      targets.genericLinux.enable = cfg.platform == "generic";
+  targets.genericLinux.enable = cfg.platform == "generic";
 
-      catppuccin.enable = true;
-      catppuccin.flavor = "mocha";
+  catppuccin = {
+    enable = true;
+    flavor = "mocha";
+  };
 
-      home = {
-        username = cfg.user;
-        homeDirectory =
-          if pkgs.stdenv.isDarwin
-          then "/Users/${cfg.user}"
-          else "/home/${cfg.user}";
+  home = {
+    username = cfg.user;
+    homeDirectory =
+      if pkgs.stdenv.isDarwin
+      then "/Users/${cfg.user}"
+      else "/home/${cfg.user}";
 
-        packages = with pkgs;
-          [
-            cloudflared
-            curl
-            python314
-            tokei
-            wget
-          ]
-          ++ lib.optionals stdenv.isDarwin [
-            darwin.trash
-          ];
+    packages = with pkgs;
+      [
+        cloudflared
+        curl
+        fastfetchMinimal
+        fd
+        jq
+        python314
+        ripgrep
+        tokei
+        wget
+      ]
+      ++ lib.optionals stdenv.isDarwin [
+        darwin.trash
+      ];
 
-        shellAliases =
-          {
-            "-" = "cd -";
-            l = "ls -lh";
-            ll = "ls -lh";
-            la = "ls -lAh";
-            diff = "diff --color";
-          }
-          // lib.optionalAttrs pkgs.stdenv.isDarwin {
-            ls = "ls -G";
-            rm = "trash";
-          }
-          // lib.optionalAttrs (!pkgs.stdenv.isDarwin) {
-            ls = "ls --color=auto";
-          };
-
-        sessionVariables =
-          {
-            LESS = "-R";
-            LS_COLORS = "di=1;36:ln=35:so=32:pi=33:ex=31:bd=34;46:cd=34;43:su=30;41:sg=30;46:tw=30;42:ow=30;43";
-          }
-          // lib.optionalAttrs pkgs.stdenv.isDarwin {
-            LSCOLORS = "Gxfxcxdxbxegedabagacad";
-          };
-      };
-    }
-
-    # bat
-    {
-      programs.bat = {
-        enable = true;
-        config = {
-          italic-text = "always";
-        };
-        extraPackages = with pkgs.bat-extras; [
-          batman
-          batdiff
-          batwatch
-        ];
+    shellAliases =
+      {
+        "-" = "cd -";
+        l = "ls -lh";
+        ll = "ls -lh";
+        la = "ls -lAh";
+        diff = "diff --color";
+      }
+      // lib.optionalAttrs pkgs.stdenv.isDarwin {
+        ls = "ls -G";
+        rm = "trash";
+      }
+      // lib.optionalAttrs (!pkgs.stdenv.isDarwin) {
+        ls = "ls --color=auto";
       };
 
-      home.shellAliases = {
-        "cat" = "bat --style header-filename --paging never";
-        "man" = "batman";
-        "watch" = "batwatch";
+    sessionVariables =
+      {
+        LESS = "-R";
+        LS_COLORS = "di=1;36:ln=35:so=32:pi=33:ex=31:bd=34;46:cd=34;43:su=30;41:sg=30;46:tw=30;42:ow=30;43";
+      }
+      // lib.optionalAttrs pkgs.stdenv.isDarwin {
+        LSCOLORS = "Gxfxcxdxbxegedabagacad";
       };
-    }
-
-    # direnv
-    {
-      programs.direnv = {
-        enable = true;
-        nix-direnv.enable = true;
-      };
-    }
-
-    # eza
-    {
-      programs.eza = {
-        enable = true;
-        icons = "auto";
-      };
-
-      home.shellAliases = {
-        ls = lib.mkForce "eza --group-directories-first";
-        l = lib.mkForce "eza --long --header --group-directories-first";
-        ll = lib.mkForce "eza -long --header --git --group-directories-first";
-        la = lib.mkForce "eza --long --header --all --git --group-directories-first";
-        lt = "eza --tree";
-        tree = "eza --tree";
-      };
-    }
-
-    # fastfetch
-    {
-      programs.fastfetch = {
-        enable = true;
-        package = pkgs.fastfetchMinimal;
-      };
-    }
-
-    # fd
-    {
-      programs.fd.enable = true;
-    }
-
-    # fzf
-    {
-      programs.fzf = let
-        bat = lib.getExe pkgs.bat;
-        eza = lib.getExe pkgs.eza;
-        fd = lib.getExe pkgs.fd;
-      in {
-        enable = true;
-        enableZshIntegration = true;
-
-        defaultCommand = "${fd} --type f --strip-cwd-prefix --hidden --exclude .git";
-
-        fileWidgetOptions = [
-          "--multi"
-          "--preview '${bat} --color=always --style=numbers --line-range=:500 {}'"
-        ];
-        fileWidgetCommand = ''
-          ${fd} --type f --strip-cwd-prefix --hidden --exclude .git
-        '';
-
-        changeDirWidgetCommand = ''
-          ${fd} --type d --strip-cwd-prefix --hidden --exclude .git
-        '';
-        changeDirWidgetOptions = [
-          "--preview '${eza} --tree --color=always {} | head -200'"
-        ];
-      };
-
-      programs.jq.enable = true;
-      programs.ripgrep.enable = true;
-      programs.tmux = {
-        enable = true;
-        baseIndex = 1;
-        terminal = "screen-256color";
-        mouse = true;
-      };
-    }
-
-    # zoxide
-    {
-      programs.zoxide = {
-        enable = true;
-        enableZshIntegration = true;
-        options = ["--cmd j"];
-      };
-    }
-  ];
+  };
 }
