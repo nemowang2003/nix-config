@@ -22,10 +22,6 @@
       hostPubkey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGJvk/JDDhDfbwW68N9OU90JJwYIMLuWmchbV6sr/Abe";
       userPubkey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFmKIHSNffGDt7/rf4ADMV6acXwndDh9FU8JYj2ouIDt nemo@dt-w01";
     };
-    "cn-x01" = mkHost {
-      platform = "generic";
-      hostPubkey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDluGBfG4brOfUXBGb1QjrvqWicrcTZeYYPleMw3ysGu";
-    };
     "sg-x01" = mkHost {
       domestic = false;
       platform = "generic";
