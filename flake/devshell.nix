@@ -77,10 +77,11 @@
           command = ''
             set -x
             set -e
-            nix eval "$PRJ_ROOT"#hosts --json | jq -r 'to_entries[] | select(.value.userPubkey != null) | .value.userPubkey + " " + .key' | while read -r pubkey type comment name; do
+            nix eval "$PRJ_ROOT"#userPubkeys --json | jq -r '.[]' | while read -r pubkey type comment; do
+              name="''${comment#*@}"
               key="$pubkey $type $comment"
-              gh ssh-key add - --title "''${name}" <<< "''${key}"
-              gh ssh-key add - --type signing --title "''${name}" <<< "''${key}"
+              gh ssh-key add - --title "$name" <<< "$key"
+              gh ssh-key add - --type signing --title "$name" <<< "$key"
             done
           '';
         }
