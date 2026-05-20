@@ -1,8 +1,8 @@
 {
+  self,
   config,
   lib,
   pkgs,
-  userPubkeys,
   ...
 }: let
   nc = lib.getExe pkgs.netcat;
@@ -43,8 +43,16 @@ in {
     createSshSocketDir = lib.hm.dag.entryAfter ["writeBoundary"] ''
       $DRY_RUN_CMD mkdir -m 700 -p $VERBOSE_ARG ${config.home.homeDirectory}/.ssh/sockets
     '';
+
     writeAuthorizedKeysFile = lib.hm.dag.entryAfter ["writeBoundary"] ''
-      $DRY_RUN_CMD env
+      AUTH_FILE="${config.home.homeDirectory}/.ssh/authorized_keys"
+
+      if [ -f "$AUTH_FILE" ] && [ ! -L "$AUTH_FILE" ]; then
+        $DRY_RUN_CMD mv "$AUTH_FILE" "$AUTH_FILE.$HOME_MANAGER_BACKUP_EXT"
+      fi
+
+      $DRY_RUN_CMD echo "${lib.concatStringsSep "\n" self.userPubkeys}" > "$AUTH_FILE"
+      $DRY_RUN_CMD chmod 600 "$AUTH_FILE"
     '';
   };
 }

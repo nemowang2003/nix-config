@@ -9,7 +9,7 @@
     inputs.darwin.lib.darwinSystem {
       system = cfg.arch;
       pkgs = (getSystem cfg.arch).allModuleArgs.pkgs;
-      specialArgs = self // {inherit hostname cfg;};
+      specialArgs = {inherit self inputs hostname cfg;};
       modules =
         [
           ../darwin/common.nix
@@ -22,7 +22,7 @@
     lib.nixosSystem {
       system = cfg.arch;
       pkgs = (getSystem cfg.arch).allModuleArgs.pkgs;
-      specialArgs = self // {inherit hostname cfg;};
+      specialArgs = {inherit self inputs hostname cfg;};
       modules = [
         ../nixos/${cfg.platform}.nix
         ../nixos/common.nix
@@ -33,7 +33,7 @@
   mkHome = hostname: cfg:
     inputs.home-manager.lib.homeManagerConfiguration {
       pkgs = (getSystem cfg.arch).allModuleArgs.pkgs;
-      extraSpecialArgs = {inherit hostname cfg;};
+      extraSpecialArgs = {inherit self inputs hostname cfg;};
       modules = [
         ../home-manager/common.nix
         ../hosts/${hostname}/home.nix

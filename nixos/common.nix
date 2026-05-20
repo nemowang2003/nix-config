@@ -1,8 +1,8 @@
 {
+  self,
   inputs,
   lib,
   pkgs,
-  userPubkeys,
   hostname,
   cfg,
   ...
@@ -55,7 +55,7 @@
       "wheel"
       "networkmanager"
     ];
-    openssh.authorizedKeys.keys = userPubkeys;
+    openssh.authorizedKeys.keys = self.userPubkeys;
   };
 
   programs.zsh = {

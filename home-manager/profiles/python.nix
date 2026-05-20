@@ -4,12 +4,6 @@
   ...
 }: {
   programs = {
-    mcp.servers.python-lsp = {
-      type = "stdio";
-      command = lib.getExe pkgs.ty;
-      args = ["server"];
-    };
-
     ruff = {
       enable = true;
       settings = {

@@ -1,7 +1,11 @@
-{inputs, ...} @ args: {
+{
+  inputs,
+  lib,
+  ...
+}: {
   flake.lib = inputs.haumea.lib.load {
     src = ../lib;
-    inputs = args;
+    inputs = {inherit lib;};
     transformer = [
       (
         cursor: dir:
