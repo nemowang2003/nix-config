@@ -11,25 +11,19 @@ in {
     enable = true;
     enableDefaultConfig = false;
 
-    matchBlocks = {
+    settings = {
       "github" = {
-        match = ''host github.com exec "${nc} -z 127.0.0.1 7890"'';
+        header = ''Match host github.com exec "${nc} -z 127.0.0.1 7890"'';
         proxyCommand = "${nc} -X 5 -x 127.0.0.1:7890 %h %p";
         user = "git";
       };
 
       "china-server-tunnel" = {
-        match = ''host cn-* exec "${nc} -z 127.0.0.1 7890"'';
-        remoteForwards = [
-          {
-            bind.port = 7890;
-            host.address = "127.0.0.1";
-            host.port = 7890;
-          }
-        ];
+        header = ''Match host cn-* exec "${nc} -z 127.0.0.1 7890"'';
+        remoteForward = "7890 127.0.0.1:7890";
       };
 
-      "*" = {
+      "Host *" = {
         serverAliveInterval = 60;
         serverAliveCountMax = 3;
         controlMaster = "auto";

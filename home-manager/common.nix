@@ -40,7 +40,7 @@
       [
         cloudflared
         curl
-        fastfetchMinimal
+        fastfetch.minimal
         fd
         jq
         python314
