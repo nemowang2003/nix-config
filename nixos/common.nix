@@ -11,6 +11,12 @@
     inputs.catppuccin.nixosModules.catppuccin
   ];
 
+  catppuccin = {
+    enable = true;
+    autoEnable = true;
+    flavor = "mocha";
+  };
+
   networking.hostName = hostname;
 
   nix = {
