@@ -1,4 +1,8 @@
-{inputs, ...}: {
+{
+  self,
+  inputs,
+  ...
+}: {
   imports = [
     inputs.devshell.flakeModule
   ];
@@ -8,8 +12,19 @@
     lib,
     system,
     ...
-  }: {
+  }: let
+    sopsYaml = inputs.nixago.lib.${system}.make {
+      output = ".sops.yaml";
+      format = "yaml";
+      data = self.sops.yaml;
+      hook.mode = "copy";
+    };
+  in {
+    packages.sops-yaml = sopsYaml.configFile;
+
     devshells.default = {
+      devshell.startup.sops-yaml.text = sopsYaml.shellHook;
+
       packages = with pkgs;
         [
           age
@@ -17,7 +32,6 @@
           home-manager
           jq
           sops
-          ssh-to-age
         ]
         ++ lib.optionals pkgs.stdenv.isDarwin [
           inputs.darwin.packages.${system}.default
@@ -26,7 +40,7 @@
       env = [
         {
           name = "SOPS_AGE_KEY";
-          eval = "$(ssh-to-age -private-key -i \"$HOME\"/.ssh/id_ed25519)";
+          eval = "$(${lib.getExe pkgs.ssh-to-age} -private-key -i \"$HOME/.ssh/id_ed25519\")";
         }
       ];
 
@@ -83,6 +97,28 @@
               gh ssh-key add - --title "$name" <<< "$key"
               gh ssh-key add - --type signing --title "$name" <<< "$key"
             done
+          '';
+        }
+        {
+          name = "sops-generate-yaml";
+          category = "secrets";
+          help = "generate .sops.yaml from flake hosts";
+          command = ''
+            source ${sopsYaml.shellScript}
+          '';
+        }
+        {
+          name = "sops-edit-env";
+          category = "secrets";
+          help = "sops secrets/env/common.yaml / sops secrets/env/hosts/<hostname>.yaml";
+          command = ''
+            mkdir -p "$PRJ_ROOT/secrets/env/hosts"
+            set -x
+            if [[ $# -eq 0 ]]; then
+              sops "$PRJ_ROOT/secrets/env/common.yaml"
+            else
+              sops "$PRJ_ROOT/secrets/env/hosts/$1.yaml"
+            fi
           '';
         }
       ];

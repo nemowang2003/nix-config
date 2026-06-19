@@ -8,6 +8,7 @@
   imports =
     [
       inputs.catppuccin.homeModules.catppuccin
+      inputs.sops-nix.homeManagerModules.sops
     ]
     ++ builtins.attrValues (inputs.haumea.lib.load {
       src = ./profiles;
