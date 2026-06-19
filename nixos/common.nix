@@ -22,6 +22,8 @@
         keep-outputs = true;
         keep-derivations = true;
         auto-optimise-store = true;
+        extra-substituters = self.nixCache.extraSubstituters;
+        extra-trusted-public-keys = self.nixCache.extraTrustedPublicKeys;
       }
 
       (lib.mkIf cfg.domestic {

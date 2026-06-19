@@ -15,6 +15,14 @@
 
       environment.shells = [pkgs.zsh];
 
+      nix = {
+        enable = !cfg.determinate;
+        settings = lib.mkIf (!cfg.determinate) {
+          extra-substituters = self.nixCache.extraSubstituters;
+          extra-trusted-public-keys = self.nixCache.extraTrustedPublicKeys;
+        };
+      };
+
       users.users.${cfg.user} = {
         name = cfg.user;
         home = "/Users/${cfg.user}";
