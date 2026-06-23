@@ -20,6 +20,8 @@
       };
     };
 
+    ty.enable = true;
+
     uv = {
       enable = true;
       settings = {
