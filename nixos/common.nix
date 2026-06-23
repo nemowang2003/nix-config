@@ -66,10 +66,13 @@
     openssh.authorizedKeys.keys = self.userPubkeys;
   };
 
-  programs.zsh = {
-    enable = true;
-    enableBashCompletion = false;
-    enableCompletion = false;
-    promptInit = "";
+  programs = {
+    nix-ld.enable = true;
+    zsh = {
+      enable = true;
+      enableBashCompletion = false;
+      enableCompletion = false;
+      promptInit = "";
+    };
   };
 }
