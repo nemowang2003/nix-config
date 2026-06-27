@@ -3,20 +3,20 @@
   lib,
   ...
 }: let
-  envDir = ../secrets/env;
-  hostRecipients =
+  env-dir = ../secrets/env;
+  host-recipients =
     lib.mapAttrs
-    (_: cfg: cfg.ageRecipient)
-    (lib.filterAttrs (_: cfg: cfg.ageRecipient != null) self.hosts);
+    (_: cfg: cfg.age-recipient)
+    (lib.filterAttrs (_: cfg: cfg.age-recipient != null) self.hosts);
 in {
   flake.sops = {
     env = {
-      commonFile = envDir + "/common.yaml";
-      hostFile = hostname: envDir + "/hosts/${hostname}.yaml";
+      commonFile = env-dir + "/common.yaml";
+      hostFile = hostname: env-dir + "/hosts/${hostname}.yaml";
       filesForHost = hostname:
         builtins.filter builtins.pathExists [
-          (envDir + "/common.yaml")
-          (envDir + "/hosts/${hostname}.yaml")
+          (env-dir + "/common.yaml")
+          (env-dir + "/hosts/${hostname}.yaml")
         ];
     };
 
@@ -27,7 +27,7 @@ in {
             path_regex = "secrets/env/common\\.yaml$";
             key_groups = [
               {
-                age = lib.attrValues hostRecipients;
+                age = lib.attrValues host-recipients;
               }
             ];
           }
@@ -41,7 +41,7 @@ in {
             }
           ];
         })
-        hostRecipients;
+        host-recipients;
     };
   };
 }

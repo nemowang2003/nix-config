@@ -13,17 +13,17 @@
     system,
     ...
   }: let
-    sopsYaml = inputs.nixago.lib.${system}.make {
+    sops-yaml = inputs.nixago.lib.${system}.make {
       output = ".sops.yaml";
       format = "yaml";
       data = self.sops.yaml;
       hook.mode = "copy";
     };
   in {
-    packages.sops-yaml = sopsYaml.configFile;
+    packages.sops-yaml = sops-yaml.configFile;
 
     devshells.default = {
-      devshell.startup.sops-yaml.text = sopsYaml.shellHook;
+      devshell.startup.sops-yaml.text = sops-yaml.shellHook;
 
       packages = with pkgs;
         [
@@ -65,8 +65,8 @@
               sudo darwin-rebuild switch --flake "$PRJ_ROOT" && hms
             ''
             else ''
+              set -x
               if [[ -e /etc/NIXOS ]]; then
-                set -x
                 sudo nixos-rebuild switch --flake "$PRJ_ROOT" && hms
               else
                 echo "Generic Linux detected, skipping system rebuild..."
@@ -91,20 +91,12 @@
           command = ''
             set -x
             set -e
-            nix eval "$PRJ_ROOT"#userPubkeys --json | jq -r '.[]' | while read -r pubkey type comment; do
+            nix eval "$PRJ_ROOT"#user-pubkeys --json | jq -r '.[]' | while read -r pubkey type comment; do
               name="''${comment#*@}"
               key="$pubkey $type $comment"
               gh ssh-key add - --title "$name" <<< "$key"
               gh ssh-key add - --type signing --title "$name" <<< "$key"
             done
-          '';
-        }
-        {
-          name = "sops-generate-yaml";
-          category = "secrets";
-          help = "generate .sops.yaml from flake hosts";
-          command = ''
-            source ${sopsYaml.shellScript}
           '';
         }
         {

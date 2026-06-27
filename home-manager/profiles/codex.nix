@@ -4,7 +4,7 @@
   lib,
   ...
 }: let
-  mutableSettings = {
+  settings = {
     approval_policy = "never";
     sandbox_mode = "danger-full-access";
     tui.status_line = [
@@ -20,7 +20,7 @@
       "weekly-limit"
     ];
   };
-  tomlFile = (pkgs.formats.toml {}).generate "codex-config.toml" mutableSettings;
+  toml-file = (pkgs.formats.toml {}).generate "codex-config.toml" settings;
 in {
   programs.codex.enable = true;
 
@@ -47,7 +47,7 @@ in {
           echo "{}" > "$OLD_JSON"
         fi
 
-        ${yj} -tj < "${tomlFile}" > "$NEW_JSON"
+        ${yj} -tj < "${toml-file}" > "$NEW_JSON"
         ${jq} -s '.[0] * .[1]' "$OLD_JSON" "$NEW_JSON" > "$MERGED_JSON"
         ${yj} -jt < "$MERGED_JSON" > "$MERGED_TOML"
 

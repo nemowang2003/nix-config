@@ -1,7 +1,7 @@
 {
   config,
   lib,
-  pkgs,
+  cfg,
   ...
 }: {
   # git
@@ -11,7 +11,7 @@
       [
         ".helix"
       ]
-      ++ lib.optionals pkgs.stdenv.isDarwin [".DS_Store"];
+      ++ lib.optionals cfg.is-darwin [".DS_Store"];
     settings = {
       user = {
         name = "nemowang";

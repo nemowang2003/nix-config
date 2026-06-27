@@ -1,6 +1,7 @@
 {
   pkgs,
   lib,
+  cfg,
   ...
 }: {
   programs.zsh = {
@@ -101,7 +102,7 @@
         zstyle ':completion:*' cache-path "''${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump"
 
         zstyle ':completion:*:*:*:users' ignored-patterns ${
-          if pkgs.stdenv.isDarwin
+          if cfg.is-darwin
           then "'_*'"
           else ''            \
                            adm amanda apache at avahi avahi-autoipd beaglidx bin cacti canna \

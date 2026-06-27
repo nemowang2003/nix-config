@@ -1,4 +1,5 @@
 {
+  self,
   inputs,
   pkgs,
   lib,
@@ -10,18 +11,7 @@
       inputs.catppuccin.homeModules.catppuccin
       inputs.sops-nix.homeManagerModules.sops
     ]
-    ++ builtins.attrValues (inputs.haumea.lib.load {
-      src = ./profiles;
-      loader = inputs.haumea.lib.loaders.path;
-      transformer = [
-        (
-          cursor: dir:
-            if dir ? default
-            then dir.default
-            else dir
-        )
-      ];
-    });
+    ++ self.lib.collect-nix-files ./profiles;
 
   targets.genericLinux.enable = cfg.platform == "generic";
 
@@ -34,7 +24,7 @@
   home = {
     username = cfg.user;
     homeDirectory =
-      if pkgs.stdenv.isDarwin
+      if cfg.is-darwin
       then "/Users/${cfg.user}"
       else "/home/${cfg.user}";
 
@@ -42,7 +32,7 @@
       [
         cloudflared
         curl
-        fastfetch.minimal
+        fastfetch-unwrapped
         fd
         jq
         python314
@@ -50,7 +40,7 @@
         tokei
         wget
       ]
-      ++ lib.optionals stdenv.isDarwin [
+      ++ lib.optionals cfg.is-darwin [
         darwin.trash
       ];
 
@@ -62,20 +52,23 @@
         la = "ls -lAh";
         diff = "diff --color";
       }
-      // lib.optionalAttrs pkgs.stdenv.isDarwin {
-        ls = "ls -G";
-        rm = "trash";
-      }
-      // lib.optionalAttrs (!pkgs.stdenv.isDarwin) {
-        ls = "ls --color=auto";
-      };
+      // (
+        if cfg.is-darwin
+        then {
+          ls = "ls -G";
+          rm = "trash";
+        }
+        else {
+          ls = "ls --color=auto";
+        }
+      );
 
     sessionVariables =
       {
         LESS = "-R";
         LS_COLORS = "di=1;36:ln=35:so=32:pi=33:ex=31:bd=34;46:cd=34;43:su=30;41:sg=30;46:tw=30;42:ow=30;43";
       }
-      // lib.optionalAttrs pkgs.stdenv.isDarwin {
+      // lib.optionalAttrs cfg.is-darwin {
         LSCOLORS = "Gxfxcxdxbxegedabagacad";
       };
   };

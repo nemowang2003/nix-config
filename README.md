@@ -31,13 +31,6 @@ rebuild
 gh-keysync
 ```
 
-## Todo
-
-- sops
-  - sensitive env
-  - per-host configuration
-- native nixos hardware configuration
-
 ---
 
 **Note**: tailscale is strongly recommended as primary network layer for cross-node access and ssh.

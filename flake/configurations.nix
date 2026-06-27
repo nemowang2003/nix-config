@@ -10,12 +10,10 @@
       system = cfg.arch;
       pkgs = (getSystem cfg.arch).allModuleArgs.pkgs;
       specialArgs = {inherit self inputs hostname cfg;};
-      modules =
-        [
-          ../darwin/common.nix
-          ../hosts/${hostname}/darwin.nix
-        ]
-        ++ lib.optionals cfg.determinate [../darwin/determinate.nix];
+      modules = [
+        ../darwin
+        ../hosts/${hostname}/darwin
+      ];
     };
 
   mkNixOS = hostname: cfg:
@@ -24,19 +22,20 @@
       pkgs = (getSystem cfg.arch).allModuleArgs.pkgs;
       specialArgs = {inherit self inputs hostname cfg;};
       modules = [
-        ../nixos/${cfg.platform}.nix
-        ../nixos/common.nix
-        ../hosts/${hostname}/nixos.nix
+        ../nixos
+        ../hosts/${hostname}/nixos
       ];
     };
 
   mkHome = hostname: cfg:
     inputs.home-manager.lib.homeManagerConfiguration {
       pkgs = (getSystem cfg.arch).allModuleArgs.pkgs;
-      extraSpecialArgs = {inherit self inputs hostname cfg;};
+      extraSpecialArgs = {
+        inherit self inputs hostname cfg;
+      };
       modules = [
-        ../home-manager/common.nix
-        ../hosts/${hostname}/home.nix
+        ../home-manager
+        ../hosts/${hostname}/home-manager
       ];
     };
 in {
@@ -46,7 +45,7 @@ in {
       (hostname: cfg: mkDarwin hostname cfg)
       (
         lib.filterAttrs
-        (hostname: cfg: self.lib.arch.isDarwin cfg.arch)
+        (hostname: cfg: cfg.is-darwin)
         self.hosts
       );
 
@@ -55,7 +54,7 @@ in {
       (hostname: cfg: mkNixOS hostname cfg)
       (
         lib.filterAttrs
-        (hostname: cfg: self.lib.arch.isLinux cfg.arch && cfg.platform != "generic")
+        (hostname: cfg: cfg.is-linux && cfg.platform != "generic")
         self.hosts
       );
 

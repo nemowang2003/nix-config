@@ -1,25 +1,17 @@
-{inputs, ...}: {
+{
+  inputs,
+  lib,
+  ...
+}: {
   perSystem = {system, ...}: {
     _module.args.pkgs = import inputs.nixpkgs {
       inherit system;
       config.allowUnfree = true;
-
-      overlays = let
-        mkDarwinOverlays = packages: sourceInput: (
-          final: prev: let
-            sourcePkgs = sourceInput.legacyPackages.${system};
-          in
-            builtins.listToAttrs (map (name: {
-                name = name;
-                value =
-                  if prev.stdenv.isDarwin
-                  then sourcePkgs.${name}
-                  else prev.${name};
-              })
-              packages)
-        );
-      in [
-        # overlays: more ovelays here
+      overlays = [
+        (final: prev:
+          lib.optionalAttrs (lib.elem system ["x86_64-linux" "aarch64-darwin"]) {
+            helix = inputs.helix.packages.${system}.default;
+          })
       ];
     };
   };

@@ -10,14 +10,14 @@
     haumea.url = "github:nix-community/haumea";
     haumea.inputs.nixpkgs.follows = "nixpkgs";
 
-    darwin.url = "github:lnl7/nix-darwin";
+    determinate.url = "github:DeterminateSystems/determinate";
+    determinate.inputs.nixpkgs.follows = "nixpkgs";
+
+    darwin.url = "github:nix-darwin/nix-darwin";
     darwin.inputs.nixpkgs.follows = "nixpkgs";
 
-    nixos-wsl.url = "github:nix-community/NixOS-WSL/main";
+    nixos-wsl.url = "github:nix-community/NixOS-WSL";
     nixos-wsl.inputs.nixpkgs.follows = "nixpkgs";
-
-    catppuccin.url = "github:catppuccin/nix";
-    catppuccin.inputs.nixpkgs.follows = "nixpkgs";
 
     devshell.url = "github:numtide/devshell";
     devshell.inputs.nixpkgs.follows = "nixpkgs";
@@ -27,24 +27,35 @@
 
     nixago.url = "github:nix-community/nixago";
     nixago.inputs.nixpkgs.follows = "nixpkgs";
+    nixago.inputs.flake-utils.follows = "flake-utils";
+    nixago.inputs.nixago-exts.follows = "nixago-exts";
 
     sops-nix.url = "github:Mic92/sops-nix";
     sops-nix.inputs.nixpkgs.follows = "nixpkgs";
+
+    catppuccin.url = "github:catppuccin/nix";
+    catppuccin.inputs.nixpkgs.follows = "nixpkgs";
+
+    helix.url = "github:helix-editor/helix";
+
+    # dependencies
+    flake-utils.url = "github:numtide/flake-utils";
+
+    nixago-exts.url = "github:nix-community/nixago-extensions";
+    nixago-exts.inputs.flake-utils.follows = "flake-utils";
+    nixago-exts.inputs.nixago.follows = "nixago";
+    nixago-exts.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = {...} @ inputs:
+  outputs = {...} @ inputs: let
+    lib = inputs.haumea.lib.load {
+      src = ./lib;
+      inputs = {inherit (inputs.nixpkgs) lib;};
+      transformer = inputs.haumea.lib.transformers.liftDefault;
+    };
+  in
     inputs.flake-parts.lib.mkFlake {inherit inputs;} {
-      imports = builtins.attrValues (inputs.haumea.lib.load {
-        src = ./flake;
-        loader = inputs.haumea.lib.loaders.path;
-        transformer = [
-          (
-            cursor: dir:
-              if dir ? default
-              then dir.default
-              else dir
-          )
-        ];
-      });
+      flake = {inherit lib;};
+      imports = lib.collect-nix-files ./flake;
     };
 }

@@ -18,7 +18,7 @@ in {
         user = "git";
       };
 
-      "china-server-tunnel" = {
+      "domestic-server-tunnel" = {
         header = ''Match host cn-* exec "${nc} -z 127.0.0.1 7890"'';
         remoteForward = "7890 127.0.0.1:7890";
       };
@@ -45,7 +45,7 @@ in {
         $DRY_RUN_CMD mv "$AUTH_FILE" "$AUTH_FILE.$HOME_MANAGER_BACKUP_EXT"
       fi
 
-      $DRY_RUN_CMD echo "${lib.concatStringsSep "\n" self.userPubkeys}" > "$AUTH_FILE"
+      $DRY_RUN_CMD echo "${lib.concatStringsSep "\n" self.user-pubkeys}" > "$AUTH_FILE"
       $DRY_RUN_CMD chmod 600 "$AUTH_FILE"
     '';
   };
