@@ -14,6 +14,10 @@ in {
       autoupdate = false;
       share = "disabled";
 
+      provider = {
+        deepseek.options.chunkTimeout = 300000;
+      };
+
       lsp = {
         ty = {
           command = [ty "server"];
@@ -40,5 +44,8 @@ in {
         '';
   };
 
-  home.sessionVariables."OPENCODE_DISABLE_LSP_DOWNLOAD" = "true";
+  home.sessionVariables = {
+    "OPENCODE_DISABLE_LSP_DOWNLOAD" = "true";
+    "OPENCODE_EXPERIMENTAL_LSP_TOOL" = "true";
+  };
 }
