@@ -1,6 +1,6 @@
 {lib, ...}: let
-  is-darwin = arch: (lib.systems.elaborate arch).isDarwin;
-  is-linux = arch: (lib.systems.elaborate arch).isLinux;
+  isDarwin = arch: (lib.systems.elaborate arch).isDarwin;
+  isLinux = arch: (lib.systems.elaborate arch).isLinux;
   mkHost = {
     arch ? "x86_64-linux",
     user ? "nemo",
@@ -11,8 +11,8 @@
     age-recipient ? null,
   }: {
     inherit arch user domestic determinate platform user-pubkey age-recipient;
-    is-darwin = is-darwin arch;
-    is-linux = is-linux arch;
+    isDarwin = isDarwin arch;
+    isLinux = isLinux arch;
   };
   hosts = {
     "nb-d01" = mkHost {

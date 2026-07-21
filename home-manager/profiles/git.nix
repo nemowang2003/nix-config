@@ -11,7 +11,7 @@
       [
         ".helix"
       ]
-      ++ lib.optionals cfg.is-darwin [".DS_Store"];
+      ++ lib.optionals cfg.isDarwin [".DS_Store"];
     settings = {
       user = {
         name = "nemowang";

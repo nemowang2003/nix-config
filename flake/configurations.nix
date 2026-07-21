@@ -45,7 +45,7 @@ in {
       (hostname: cfg: mkDarwin hostname cfg)
       (
         lib.filterAttrs
-        (hostname: cfg: cfg.is-darwin)
+        (hostname: cfg: cfg.isDarwin)
         self.hosts
       );
 
@@ -54,7 +54,7 @@ in {
       (hostname: cfg: mkNixOS hostname cfg)
       (
         lib.filterAttrs
-        (hostname: cfg: cfg.is-linux && cfg.platform != "generic")
+        (hostname: cfg: cfg.isLinux && cfg.platform != "generic")
         self.hosts
       );
 

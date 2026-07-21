@@ -19,7 +19,20 @@
       data = self.sops.yaml;
       hook.mode = "copy";
     };
+    alejandra-format = pkgs.writeShellApplication {
+      name = "alejandra-format";
+      runtimeInputs = [pkgs.alejandra];
+      text = ''
+        if [[ $# -eq 0 ]]; then
+          set -- .
+        fi
+
+        exec alejandra "$@"
+      '';
+    };
   in {
+    formatter = alejandra-format;
+
     packages.sops-yaml = sops-yaml.configFile;
 
     devshells.default = {
@@ -45,6 +58,58 @@
       ];
 
       commands = [
+        {
+          name = "check-eval";
+          category = "checks";
+          help = "evaluate flake outputs for all declared hosts";
+          command = ''
+            set -e
+            nix eval "$PRJ_ROOT#user-pubkeys" --json >/dev/null
+
+            nix eval "$PRJ_ROOT#hosts" --json \
+              | jq -r 'to_entries[] | [.key, .value.user, .value.isDarwin, .value.isLinux, .value.platform] | @tsv' \
+              | while IFS=$'\t' read -r host user is_darwin is_linux platform; do
+                home="$user@$host"
+                echo "eval homeConfigurations.\"$home\""
+                nix eval "$PRJ_ROOT#homeConfigurations.\"$home\".config.home.stateVersion" >/dev/null
+
+                if [[ "$is_darwin" == "true" ]]; then
+                  echo "eval darwinConfigurations.$host"
+                  nix eval "$PRJ_ROOT#darwinConfigurations.$host.config.system.stateVersion" >/dev/null
+                fi
+
+                if [[ "$is_linux" == "true" && "$platform" != "generic" ]]; then
+                  echo "eval nixosConfigurations.$host"
+                  nix eval "$PRJ_ROOT#nixosConfigurations.$host.config.system.stateVersion" >/dev/null
+                fi
+              done
+          '';
+        }
+        {
+          name = "check-activation";
+          category = "checks";
+          help = "dry-run Home Manager activation packages for all declared hosts";
+          command = ''
+            set -e
+
+            nix eval "$PRJ_ROOT#hosts" --json \
+              | jq -r 'to_entries[] | [.key, .value.user] | @tsv' \
+              | while IFS=$'\t' read -r host user; do
+                home="$user@$host"
+                attr="$PRJ_ROOT#homeConfigurations.\"$home\".activationPackage"
+                log="$(mktemp "''${TMPDIR:-/tmp}/check-activation.XXXXXX")"
+
+                echo "dry-run homeConfigurations.\"$home\".activationPackage"
+                if nix build --dry-run "$attr" >"$log" 2>&1; then
+                  rm -f "$log"
+                else
+                  cat "$log" >&2
+                  rm -f "$log"
+                  exit 1
+                fi
+              done
+          '';
+        }
         {
           name = "hms";
           category = "deployment";
@@ -80,7 +145,6 @@
           help = "nix flake update";
           command = ''
             set -x
-            ${lib.optionalString pkgs.stdenv.isDarwin "ulimit -n 4096"}
             nix flake update && rebuild
           '';
         }
