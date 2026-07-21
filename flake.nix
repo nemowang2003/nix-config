@@ -41,6 +41,8 @@
 
     helix.url = "github:helix-editor/helix";
 
+    llm-agents.url = "github:numtide/llm-agents.nix";
+
     # dependencies
     flake-utils.url = "github:numtide/flake-utils";
 

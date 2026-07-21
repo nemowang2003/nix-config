@@ -4,26 +4,84 @@
   lib,
   ...
 }: let
-  settings = {
-    approval_policy = "never";
-    sandbox_mode = "danger-full-access";
-    tui.status_line = [
-      "model-with-reasoning"
-      "current-dir"
-      "git-branch"
-      "pull-request-number"
-      "branch-changes"
-      "run-state"
-      "permissions"
-      "context-remaining"
-      "five-hour-limit"
-      "weekly-limit"
+  mkLspMcpServer = lspCommand: lspArgs: {
+    command = lib.getExe pkgs.mcp-language-server;
+    args =
+      [
+        "-workspace"
+        "."
+        "-lsp"
+        lspCommand
+      ]
+      ++ lib.optionals (lspArgs != []) (["--"] ++ lspArgs);
+    enabled = false;
+    disabled_tools = [
+      "edit_file"
+      "rename_symbol"
     ];
+    startup_timeout_sec = 20;
+    tool_timeout_sec = 120;
   };
+
+  # Keep this transform in sync with Home Manager's
+  # programs.codex.enableMcpIntegration implementation, but write it through
+  # mutableCodexConfig below instead of home.file.
+  shared-mcp-servers = lib.optionalAttrs (config.programs.mcp.enable && config.programs.mcp.servers != {}) (
+    lib.mapAttrs (
+      name: server:
+        lib.hm.mcp.transformMcpServer {
+          inherit server;
+          exclude = [
+            "headers"
+            "type"
+          ];
+          extraTransforms = [
+            (s: s // lib.optionalAttrs (s.headers or {} != {}) {http_headers = s.headers;})
+            lib.hm.mcp.addType
+            (lib.hm.mcp.wrapEnvFilesCommand {inherit pkgs name;})
+          ];
+        }
+    )
+    config.programs.mcp.servers
+  );
+  codex-lsp-mcp-servers = {
+    nixd-lsp = mkLspMcpServer (lib.getExe pkgs.nixd) [];
+    rust-analyzer-lsp = mkLspMcpServer (lib.getExe pkgs.rust-bin.stable.latest.rust-analyzer) [];
+    ty-lsp = mkLspMcpServer (lib.getExe pkgs.ty) ["server"];
+  };
+  mcp-servers = shared-mcp-servers // codex-lsp-mcp-servers;
+
+  settings =
+    {
+      approval_policy = "never";
+      sandbox_mode = "danger-full-access";
+      tui.status_line = [
+        "model-with-reasoning"
+        "current-dir"
+        "git-branch"
+        "pull-request-number"
+        "branch-changes"
+        "run-state"
+        "permissions"
+        "context-remaining"
+        "five-hour-limit"
+        "weekly-limit"
+      ];
+    }
+    // lib.optionalAttrs (mcp-servers != {}) {
+      mcp_servers = mcp-servers;
+    };
   toml-file = (pkgs.formats.toml {}).generate "codex-config.toml" settings;
 in {
-  programs.codex.enable = true;
+  programs.codex = {
+    enable = true;
+    enableMcpIntegration = false;
+    package = pkgs.llm-agents.codex;
+  };
 
+  # Keep Codex config mutable because Codex writes trust/bookkeeping state to
+  # config.toml at runtime. See:
+  # https://github.com/nix-community/home-manager/issues/9397
   home.activation.mutableCodexConfig = let
     yj = lib.getExe pkgs.yj;
     jq = lib.getExe pkgs.jq;

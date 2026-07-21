@@ -1,4 +1,5 @@
 {...}: {
-  programs.mcp.enable = true;
-  # TODO
+  programs.mcp = {
+    enable = true;
+  };
 }

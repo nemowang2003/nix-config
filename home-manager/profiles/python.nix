@@ -1,8 +1,4 @@
-{
-  pkgs,
-  lib,
-  ...
-}: {
+{...}: {
   programs = {
     ruff = {
       enable = true;
@@ -20,7 +16,9 @@
       };
     };
 
-    ty.enable = true;
+    ty = {
+      enable = true;
+    };
 
     uv = {
       enable = true;
@@ -31,18 +29,16 @@
     };
 
     helix.languages = {
-      language-server = {
-        ty = {
-          command = lib.getExe pkgs.ty;
-          args = ["server"];
-        };
+      language-server.ty = {
+        command = "ty";
+        args = ["server"];
       };
 
       language = [
         {
           name = "python";
           auto-format = true;
-          language-servers = ["ty" "ruff" "copilot"];
+          language-servers = ["ty" "ruff"];
           roots = ["pyproject.toml"];
           formatter = {
             command = "sh";
