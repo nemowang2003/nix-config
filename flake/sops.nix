@@ -8,16 +8,31 @@
     lib.mapAttrs
     (_: cfg: cfg.age-recipient)
     (lib.filterAttrs (_: cfg: cfg.age-recipient != null) self.hosts);
+  trusted-recipients =
+    lib.mapAttrs
+    (_: cfg: cfg.age-recipient)
+    (lib.filterAttrs (_: cfg: cfg.trusted && cfg.age-recipient != null) self.hosts);
 in {
   flake.sops = {
     env = {
       commonFile = env-dir + "/common.yaml";
+      trustedFile = env-dir + "/trusted.yaml";
       hostFile = hostname: env-dir + "/hosts/${hostname}.yaml";
-      filesForHost = hostname:
-        builtins.filter builtins.pathExists [
-          (env-dir + "/common.yaml")
-          (env-dir + "/hosts/${hostname}.yaml")
-        ];
+      filesForHost = hostname: let
+        cfg = self.hosts.${hostname};
+      in
+        builtins.filter builtins.pathExists
+        (
+          lib.optionals (cfg.age-recipient != null) [
+            (env-dir + "/common.yaml")
+          ]
+          ++ lib.optionals (cfg.trusted && cfg.age-recipient != null) [
+            (env-dir + "/trusted.yaml")
+          ]
+          ++ [
+            (env-dir + "/hosts/${hostname}.yaml")
+          ]
+        );
     };
 
     yaml = {
@@ -28,6 +43,14 @@ in {
             key_groups = [
               {
                 age = lib.attrValues host-recipients;
+              }
+            ];
+          }
+          {
+            path_regex = "secrets/env/trusted\\.yaml$";
+            key_groups = [
+              {
+                age = lib.attrValues trusted-recipients;
               }
             ];
           }

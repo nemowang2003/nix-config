@@ -1,4 +1,11 @@
-{...}: {
+{pkgs, ...}: {
+  my.lsp.servers.ty = {
+    package = pkgs.ty;
+    args = ["server"];
+    extensions = [".py"];
+    language = "python";
+  };
+
   programs = {
     ruff = {
       enable = true;
@@ -29,11 +36,6 @@
     };
 
     helix.languages = {
-      language-server.ty = {
-        command = "ty";
-        args = ["server"];
-      };
-
       language = [
         {
           name = "python";

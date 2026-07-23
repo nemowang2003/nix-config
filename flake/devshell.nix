@@ -166,15 +166,21 @@
         {
           name = "sops-edit-env";
           category = "secrets";
-          help = "sops secrets/env/common.yaml / sops secrets/env/hosts/<hostname>.yaml";
+          help = "sops secrets/env/{common,trusted}.yaml / secrets/env/hosts/<hostname>.yaml";
           command = ''
             mkdir -p "$PRJ_ROOT/secrets/env/hosts"
             set -x
-            if [[ $# -eq 0 ]]; then
-              sops "$PRJ_ROOT/secrets/env/common.yaml"
-            else
-              sops "$PRJ_ROOT/secrets/env/hosts/$1.yaml"
-            fi
+            case "''${1:-common}" in
+              common)
+                sops "$PRJ_ROOT/secrets/env/common.yaml"
+                ;;
+              trusted)
+                sops "$PRJ_ROOT/secrets/env/trusted.yaml"
+                ;;
+              *)
+                sops "$PRJ_ROOT/secrets/env/hosts/$1.yaml"
+                ;;
+            esac
           '';
         }
       ];

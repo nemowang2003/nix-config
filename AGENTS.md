@@ -22,7 +22,7 @@ Use the devshell via direnv or `nix develop`.
 - `check-eval`: evaluate flake outputs for all hosts declared in `.#hosts`.
 - `check-activation`: dry-run Home Manager activation packages for all hosts declared in `.#hosts`.
 - `gh-keysync`: publish declared SSH public keys to GitHub.
-- `sops-edit-env [hostname]`: edit common or host-specific encrypted environment secrets.
+- `sops-edit-env [common|trusted|hostname]`: edit common, trusted, or host-specific encrypted environment secrets.
 
 Useful low-level checks:
 
@@ -34,6 +34,8 @@ nix eval .#user-pubkeys --json
 ## Coding Style & Naming Conventions
 
 Write Nix with two-space indentation and prefer small, composable modules. Attribute names in new local metadata use kebab-case, such as `user-pubkeys`, `age-recipient`, and `build-nix-settings`. Keep host-independent logic in shared modules; keep host-specific choices under `hosts/<hostname>/`.
+
+Use `my.*` for private cross-module metadata that is not part of Home Manager's upstream option namespace. Current private registries are `my.lsp.servers` for reusable LSP declarations consumed by editors and coding agents, and `my.env-secrets` for environment secrets materialized by the shared sops profile.
 
 Format Nix files with Alejandra:
 
@@ -51,7 +53,7 @@ There is no separate test suite. Validate by evaluating representative outputs b
 check-eval
 ```
 
-For risky Home Manager changes, run `check-activation` before `hms` or `rebuild`. It can dry-run non-local architectures, but it only validates the activation package build plan; it does not prove the remote host can activate successfully.
+For risky Home Manager changes, run `check-activation` before `hms` or `rebuild`. It can dry-run non-local architectures, but it only validates the activation package build plan; it does not prove the remote host can activate successfully or decrypt its sops secrets.
 
 ## Commit & Pull Request Guidelines
 

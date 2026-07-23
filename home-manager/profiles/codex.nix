@@ -4,16 +4,21 @@
   lib,
   ...
 }: let
-  mkLspMcpServer = lspCommand: lspArgs: {
+  lspServers = lib.filterAttrs (_: server: server.enable && server.agent.enable) config.my.lsp.servers;
+  lspCommand = server:
+    if server.command != null
+    then server.command
+    else lib.getExe server.package;
+  mkLspMcpServer = server: {
     command = lib.getExe pkgs.mcp-language-server;
     args =
       [
         "-workspace"
         "."
         "-lsp"
-        lspCommand
+        (lspCommand server)
       ]
-      ++ lib.optionals (lspArgs != []) (["--"] ++ lspArgs);
+      ++ lib.optionals (server.args != []) (["--"] ++ server.args);
     enabled = false;
     disabled_tools = [
       "edit_file"
@@ -44,11 +49,10 @@
     )
     config.programs.mcp.servers
   );
-  codex-lsp-mcp-servers = {
-    nixd-lsp = mkLspMcpServer (lib.getExe pkgs.nixd) [];
-    rust-analyzer-lsp = mkLspMcpServer (lib.getExe pkgs.rust-bin.stable.latest.rust-analyzer) [];
-    ty-lsp = mkLspMcpServer (lib.getExe pkgs.ty) ["server"];
-  };
+  codex-lsp-mcp-servers =
+    lib.mapAttrs'
+    (name: server: lib.nameValuePair "${name}-lsp" (mkLspMcpServer server))
+    lspServers;
   mcp-servers = shared-mcp-servers // codex-lsp-mcp-servers;
 
   settings =

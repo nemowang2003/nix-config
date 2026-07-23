@@ -1,11 +1,20 @@
 {
+  config,
+  lib,
   pkgs,
   cfg,
   ...
 }: let
   goalPlugin = "@nemowang2003/opencode-goal-plugin@0.1.25";
   pkg = pkgs.llm-agents.opencode;
+  lspServers = lib.filterAttrs (_: server: server.enable && server.agent.enable && server.extensions != []) config.my.lsp.servers;
+  lspCommand = server:
+    if server.command != null
+    then server.command
+    else lib.getExe server.package;
 in {
+  my.env-secrets.OPENCODE_NOTIFY_URL.group = "common";
+
   programs.opencode = {
     enable = true;
     enableMcpIntegration = true;
@@ -21,12 +30,13 @@ in {
         deepseek.options.chunkTimeout = 300000;
       };
 
-      lsp = {
-        ty = {
-          command = ["ty" "server"];
-          extensions = [".py"];
-        };
-      };
+      lsp =
+        lib.mapAttrs
+        (_: server: {
+          command = [(lspCommand server)] ++ server.args;
+          inherit (server) extensions;
+        })
+        lspServers;
     };
 
     tui = {
@@ -59,28 +69,40 @@ in {
   };
 
   xdg.configFile."opencode/plugins/notify-on-idle.js".text = ''
-    export const NotifyOnIdlePlugin = async ({ $ }) => {
+    export const NotifyOnIdlePlugin = async ({ client, $ }) => {
+      const activeSessions = new Set()
       let lastNotificationAt = 0
+      const notifyUrl = process.env.OPENCODE_NOTIFY_URL
 
       return {
         event: async ({ event }) => {
-          if (event.type !== "session.idle") return
+          if (event.type !== "session.status") return
+
+          const { sessionID, status } = event.properties
+          if (status.type === "busy" || status.type === "retry") {
+            activeSessions.add(sessionID)
+            return
+          }
+
+          if (status.type !== "idle") return
+          if (!activeSessions.delete(sessionID)) return
+          if (!notifyUrl) return
+
+          const session = await client.session
+            .get({ path: { id: sessionID } })
+            .then((result) => result.data)
+            .catch(() => undefined)
+          if (!session || session.parentID) return
 
           const now = Date.now()
           if (now - lastNotificationAt < 30_000) return
           lastNotificationAt = now
 
           try {
-            if (process.platform === "darwin") {
-              await $`osascript -e 'display notification "Agent finished working." with title "opencode"'`
-              return
-            }
-
-            if (process.platform === "linux") {
-              await $`sh -lc 'command -v notify-send >/dev/null 2>&1 && notify-send "opencode" "Agent finished working." || true'`
-            }
+            await $`${pkgs.curl}/bin/curl --fail --silent --show-error --max-time 10 ''${notifyUrl}`.quiet()
           } catch {
-            // Notifications are best-effort only.
+            // Notifications are best-effort only. Do not log the URL because it may contain a token.
+            console.warn("[opencode] notification failed")
           }
         },
       }
