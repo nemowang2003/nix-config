@@ -11,6 +11,7 @@
       pkgs = (getSystem cfg.arch).allModuleArgs.pkgs;
       specialArgs = {inherit self inputs hostname cfg;};
       modules = [
+        inputs.nix-homebrew.darwinModules.nix-homebrew
         ../darwin
         ../hosts/${hostname}/darwin
       ];

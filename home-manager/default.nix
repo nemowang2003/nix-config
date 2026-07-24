@@ -11,6 +11,7 @@
       inputs.catppuccin.homeModules.catppuccin
       inputs.sops-nix.homeManagerModules.sops
     ]
+    ++ self.lib.collect-nix-files ./modules
     ++ self.lib.collect-nix-files ./profiles;
 
   targets.genericLinux.enable = cfg.platform == "generic";

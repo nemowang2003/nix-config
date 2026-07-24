@@ -8,6 +8,8 @@ This repository is a Nix flake for personal machine configuration across macOS, 
 - `flake/hosts.nix` is the host registry. Add machines here before creating host modules.
 - `flake/configurations.nix` builds `darwinConfigurations`, `nixosConfigurations`, and standalone `homeConfigurations`.
 - `darwin/`, `nixos/`, and `home-manager/` contain shared modules and profiles.
+- `home-manager/modules/` declares private Home Manager options and shared glue, such as `my.*`.
+- `home-manager/profiles/` contains concrete program, language, and secret profiles.
 - `hosts/<hostname>/{darwin,nixos,home-manager}/default.nix` contains per-host overrides.
 - `secrets/env/` stores sops-managed encrypted environment secrets.
 - `lib/` contains shared helper functions.

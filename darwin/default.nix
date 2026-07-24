@@ -27,7 +27,55 @@
       system = {
         primaryUser = cfg.user;
         defaults = {
-          # TODO
+          NSGlobalDomain = {
+            AppleShowAllExtensions = true;
+            NSAutomaticCapitalizationEnabled = false;
+            NSAutomaticPeriodSubstitutionEnabled = false;
+            "com.apple.trackpad.forceClick" = false;
+            "com.apple.trackpad.scaling" = 1.5;
+          };
+
+          dock = {
+            mineffect = "scale";
+            minimize-to-application = true;
+            mru-spaces = false;
+            show-recents = false;
+            showDesktopGestureEnabled = false;
+            tilesize = 61;
+            wvous-bl-corner = 11; # Launchpad
+            wvous-br-corner = 14; # Quick Note
+          };
+
+          finder = {
+            FXPreferredViewStyle = "Nlsv";
+            NewWindowTarget = "Other";
+            NewWindowTargetPath = "file:///Users/${cfg.user}/Downloads/";
+            ShowExternalHardDrivesOnDesktop = false;
+            ShowPathbar = true;
+            ShowRemovableMediaOnDesktop = false;
+          };
+
+          screencapture.location = "/Users/${cfg.user}/Downloads";
+
+          WindowManager = {
+            AppWindowGroupingBehavior = true;
+            EnableStandardClickToShowDesktop = false;
+            EnableTiledWindowMargins = false;
+            GloballyEnabled = true;
+            HideDesktop = true;
+            StageManagerHideWidgets = true;
+          };
+
+          trackpad = {
+            Clicking = true;
+            TrackpadRightClick = true;
+            TrackpadThreeFingerDrag = true;
+          };
+
+          menuExtraClock = {
+            ShowAMPM = true;
+            ShowDayOfWeek = true;
+          };
         };
       };
 

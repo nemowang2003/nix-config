@@ -3,9 +3,23 @@
   cfg,
   ...
 }: {
+  nix-homebrew = {
+    enable = true;
+    enableRosetta = cfg.arch == "aarch64-darwin";
+    user = cfg.user;
+    autoMigrate = true;
+
+    mutableTaps = false;
+
+    extraEnv = lib.optionalAttrs cfg.domestic {
+      HOMEBREW_API_DOMAIN = "https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api";
+      HOMEBREW_BOTTLE_DOMAIN = "https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles";
+    };
+  };
+
   homebrew = {
     enable = true;
-    enableZshIntegration = true;
+    enableZshIntegration = false;
 
     onActivation = {
       extraFlags = ["--verbose"];
@@ -28,8 +42,5 @@
         "the-unarchiver"
       ]
       ++ lib.optionals cfg.domestic ["clash-verge-rev"];
-  };
-  environment.variables = lib.mkIf cfg.domestic {
-    HOMEBREW_API_DOMAIN = "https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api";
   };
 }
