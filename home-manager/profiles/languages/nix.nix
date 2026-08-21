@@ -1,23 +1,16 @@
 {pkgs, ...}: {
   my.lsp.servers.nixd = {
     package = pkgs.nixd;
+  };
+
+  my.languages.nix = {
     extensions = [".nix"];
-    language = "nix";
+    lsp = ["nixd"];
+    formatter.command = "alejandra";
+    helix.autoFormat = true;
   };
 
   home.packages = with pkgs; [
     alejandra
   ];
-  programs = {
-    helix.languages = {
-      language = [
-        {
-          name = "nix";
-          auto-format = true;
-          language-servers = ["nixd"];
-          formatter.command = "alejandra";
-        }
-      ];
-    };
-  };
 }

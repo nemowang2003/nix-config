@@ -7,7 +7,28 @@
 }: let
   goalPlugin = "@nemowang2003/opencode-goal-plugin@0.1.25";
   pkg = pkgs.llm-agents.opencode;
-  lspServers = lib.filterAttrs (_: server: server.enable && server.agent.enable && server.extensions != []) config.my.lsp.servers;
+  agentLanguages =
+    lib.filterAttrs
+    (_: language: language.enable && language.agent.enable)
+    config.my.languages;
+  agentLanguageValues = lib.attrValues agentLanguages;
+  agentLspNames = lib.unique (lib.concatMap (language: language.lsp) agentLanguageValues);
+  lspExtensions = name:
+    lib.unique (lib.concatMap (
+        language:
+          if lib.elem name language.lsp
+          then language.extensions
+          else []
+      )
+      agentLanguageValues);
+  lspServers =
+    lib.filterAttrs
+    (name: server:
+      lib.elem name agentLspNames
+      && server.enable
+      && server.agent.enable
+      && lspExtensions name != [])
+    config.my.lsp.servers;
   lspCommand = server:
     if server.command != null
     then server.command
@@ -32,9 +53,9 @@ in {
 
       lsp =
         lib.mapAttrs
-        (_: server: {
+        (name: server: {
           command = [(lspCommand server)] ++ server.args;
-          inherit (server) extensions;
+          extensions = lspExtensions name;
         })
         lspServers;
     };

@@ -2,8 +2,22 @@
   my.lsp.servers.ty = {
     package = pkgs.ty;
     args = ["server"];
+  };
+
+  my.lsp.servers.ruff = {
+    package = pkgs.ruff;
+    args = ["server"];
+  };
+
+  my.languages.python = {
     extensions = [".py"];
-    language = "python";
+    roots = ["pyproject.toml"];
+    lsp = ["ty" "ruff"];
+    formatter = {
+      command = "sh";
+      args = ["-c" "ruff check --fix-only - | ruff format -"];
+    };
+    helix.autoFormat = true;
   };
 
   programs = {
@@ -33,21 +47,6 @@
         python-downloads = "never";
         python-preference = "only-system";
       };
-    };
-
-    helix.languages = {
-      language = [
-        {
-          name = "python";
-          auto-format = true;
-          language-servers = ["ty" "ruff"];
-          roots = ["pyproject.toml"];
-          formatter = {
-            command = "sh";
-            args = ["-c" "ruff check --fix-only - | ruff format -"];
-          };
-        }
-      ];
     };
   };
 

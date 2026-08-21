@@ -1,11 +1,20 @@
 {pkgs, ...}: {
   my.lsp.servers.rust-analyzer = {
     package = pkgs.rust-bin.stable.latest.rust-analyzer;
-    extensions = [".rs"];
-    language = "rust";
   };
 
-  home.packages = with pkgs; [
-    rust-bin.stable.latest.default
+  my.languages.rust = {
+    extensions = [".rs"];
+    lsp = ["rust-analyzer"];
+  };
+
+  home.packages = [
+    (pkgs.rust-bin.stable.latest.minimal.override {
+      extensions = [
+        "clippy"
+        "rustfmt"
+        "rust-src"
+      ];
+    })
   ];
 }
