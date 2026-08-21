@@ -30,6 +30,10 @@
         exec alejandra "$@"
       '';
     };
+    jq = lib.getExe pkgs.jq;
+    sops = lib.getExe pkgs.sops;
+    gh = lib.getExe pkgs.gh;
+    home-manager = lib.getExe pkgs.home-manager;
   in {
     formatter = alejandra-format;
 
@@ -37,18 +41,6 @@
 
     devshells.default = {
       devshell.startup.sops-yaml.text = sops-yaml.shellHook;
-
-      packages = with pkgs;
-        [
-          age
-          gh
-          home-manager
-          jq
-          sops
-        ]
-        ++ lib.optionals pkgs.stdenv.isDarwin [
-          inputs.darwin.packages.${system}.default
-        ];
 
       env = [
         {
@@ -63,24 +55,29 @@
           category = "checks";
           help = "evaluate flake outputs for all declared hosts";
           command = ''
-            set -e
+            set -euo pipefail
             nix eval "$PRJ_ROOT#user-pubkeys" --json >/dev/null
 
             nix eval "$PRJ_ROOT#hosts" --json \
-              | jq -r 'to_entries[] | [.key, .value.user, .value.isDarwin, .value.isLinux, .value.platform] | @tsv' \
-              | while IFS=$'\t' read -r host user is_darwin is_linux platform; do
+              | ${jq} -r 'to_entries[] | [.key, .value.user, .value.isDarwin, .value.isLinux, .value.platform] | @tsv' \
+              | while IFS=$'\t' read -r host user isDarwin isLinux platform; do
                 home="$user@$host"
                 echo "eval homeConfigurations.\"$home\""
                 nix eval "$PRJ_ROOT#homeConfigurations.\"$home\".config.home.stateVersion" >/dev/null
 
-                if [[ "$is_darwin" == "true" ]]; then
+                if [[ "$isDarwin" == "true" ]]; then
                   echo "eval darwinConfigurations.$host"
                   nix eval "$PRJ_ROOT#darwinConfigurations.$host.config.system.stateVersion" >/dev/null
                 fi
 
-                if [[ "$is_linux" == "true" && "$platform" != "generic" ]]; then
+                if [[ "$isLinux" == "true" && "$platform" != "generic" ]]; then
                   echo "eval nixosConfigurations.$host"
                   nix eval "$PRJ_ROOT#nixosConfigurations.$host.config.system.stateVersion" >/dev/null
+                fi
+
+                if [[ "$platform" == "generic" ]]; then
+                  echo "eval genericConfigurations.$host"
+                  nix eval "$PRJ_ROOT#genericConfigurations.$host.config.system.build.activationPackage.drvPath" >/dev/null
                 fi
               done
           '';
@@ -90,10 +87,10 @@
           category = "checks";
           help = "dry-run Home Manager activation packages for all declared hosts";
           command = ''
-            set -e
+            set -euo pipefail
 
             nix eval "$PRJ_ROOT#hosts" --json \
-              | jq -r 'to_entries[] | [.key, .value.user] | @tsv' \
+              | ${jq} -r 'to_entries[] | [.key, .value.user] | @tsv' \
               | while IFS=$'\t' read -r host user; do
                 home="$user@$host"
                 attr="$PRJ_ROOT#homeConfigurations.\"$home\".activationPackage"
@@ -115,8 +112,8 @@
           category = "deployment";
           help = "home-manager switch";
           command = ''
-            set -x
-            home-manager switch --flake "$PRJ_ROOT" -b before-home-manager
+            set -euo pipefail
+            ${home-manager} switch --flake "$PRJ_ROOT" -b before-home-manager
           '';
         }
         {
@@ -124,18 +121,17 @@
           category = "deployment";
           help = "system rebuild + home-manager switch";
           command =
-            if pkgs.stdenv.isDarwin
+            if pkgs.stdenv.hostPlatform.isDarwin
             then ''
-              set -x
-              sudo darwin-rebuild switch --flake "$PRJ_ROOT" && hms
+              set -euo pipefail
+              sudo ${lib.getExe inputs.darwin.packages.${system}.default} switch --flake "$PRJ_ROOT" && hms
             ''
             else ''
-              set -x
+              set -euo pipefail
               if [[ -e /etc/NIXOS ]]; then
                 sudo nixos-rebuild switch --flake "$PRJ_ROOT" && hms
               else
-                echo "Generic Linux detected, skipping system rebuild..."
-                hms
+                sudo "${lib.getExe self.packages.${system}.generic-rebuild}" switch --flake "$PRJ_ROOT" && hms
               fi
             '';
         }
@@ -144,7 +140,7 @@
           category = "deployment";
           help = "nix flake update";
           command = ''
-            set -x
+            set -euo pipefail
             nix flake update && rebuild
           '';
         }
@@ -153,13 +149,12 @@
           category = "authentication";
           help = "gh ssh-key add";
           command = ''
-            set -x
-            set -e
-            nix eval "$PRJ_ROOT"#user-pubkeys --json | jq -r '.[]' | while read -r pubkey type comment; do
+            set -euo pipefail
+            nix eval "$PRJ_ROOT"#user-pubkeys --json | ${jq} -r '.[]' | while read -r pubkey type comment; do
               name="''${comment#*@}"
               key="$pubkey $type $comment"
-              gh ssh-key add - --title "$name" <<< "$key"
-              gh ssh-key add - --type signing --title "$name" <<< "$key"
+              ${gh} ssh-key add - --title "$name" <<< "$key"
+              ${gh} ssh-key add - --type signing --title "$name" <<< "$key"
             done
           '';
         }
@@ -168,17 +163,17 @@
           category = "secrets";
           help = "sops secrets/env/{common,trusted}.yaml / secrets/env/hosts/<hostname>.yaml";
           command = ''
+            set -euo pipefail
             mkdir -p "$PRJ_ROOT/secrets/env/hosts"
-            set -x
             case "''${1:-common}" in
               common)
-                sops "$PRJ_ROOT/secrets/env/common.yaml"
+                ${sops} "$PRJ_ROOT/secrets/env/common.yaml"
                 ;;
               trusted)
-                sops "$PRJ_ROOT/secrets/env/trusted.yaml"
+                ${sops} "$PRJ_ROOT/secrets/env/trusted.yaml"
                 ;;
               *)
-                sops "$PRJ_ROOT/secrets/env/hosts/$1.yaml"
+                ${sops} "$PRJ_ROOT/secrets/env/hosts/$1.yaml"
                 ;;
             esac
           '';

@@ -30,11 +30,13 @@
       age-recipient = "age1p73za2fx80h3wtwv5wl8atd2eslf50m94c0dy9zl2pls94yumavqg8t4cu";
     };
     "sg-x01" = mkHost {
+      determinate = true;
       domestic = false;
       platform = "generic";
     };
     "sg-a01" = mkHost {
       arch = "aarch64-linux";
+      determinate = true;
       domestic = false;
       platform = "generic";
       age-recipient = "age1y0upe9ns0flvxaamqygetvkwdljtwutwrdu8u695gstuky5jm9lq93mwh9";

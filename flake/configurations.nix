@@ -28,6 +28,19 @@
       ];
     };
 
+  mkGeneric = hostname: cfg:
+    lib.evalModules {
+      specialArgs = {
+        inherit self inputs hostname cfg;
+        system = cfg.arch;
+        pkgs = (getSystem cfg.arch).allModuleArgs.pkgs;
+      };
+      modules = [
+        ../generic
+        ../hosts/${hostname}/generic
+      ];
+    };
+
   mkHome = hostname: cfg:
     inputs.home-manager.lib.homeManagerConfiguration {
       pkgs = (getSystem cfg.arch).allModuleArgs.pkgs;
@@ -56,6 +69,15 @@ in {
       (
         lib.filterAttrs
         (hostname: cfg: cfg.isLinux && cfg.platform != "generic")
+        self.hosts
+      );
+
+    genericConfigurations =
+      lib.mapAttrs
+      (hostname: cfg: mkGeneric hostname cfg)
+      (
+        lib.filterAttrs
+        (_: cfg: cfg.platform == "generic")
         self.hosts
       );
 

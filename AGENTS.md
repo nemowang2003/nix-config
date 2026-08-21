@@ -6,11 +6,13 @@ This repository is a Nix flake for personal machine configuration across macOS, 
 
 - `flake.nix` declares inputs and loads flake modules from `flake/`.
 - `flake/hosts.nix` is the host registry. Add machines here before creating host modules.
-- `flake/configurations.nix` builds `darwinConfigurations`, `nixosConfigurations`, and standalone `homeConfigurations`.
-- `darwin/`, `nixos/`, and `home-manager/` contain shared modules and profiles.
+- `flake/configurations.nix` builds `darwinConfigurations`, `nixosConfigurations`, and `genericConfigurations` for generic Linux hosts, plus standalone `homeConfigurations` for every host.
+- `darwin/`, `nixos/`, `generic/`, and `home-manager/` contain shared modules and profiles.
+- `generic/modules/` declares generic system options and builds the nix.conf/activation package; `generic/profiles/` provides the default generic Linux configuration; `hosts/<hostname>/generic/` overrides it per host.
+- `packages/` is loaded in `flake/packages.nix` via `inputs.haumea.lib.load`, with `loader = loaders.callPackage` and `transformer = self.lib.haumea.force-shallow-transformer` (defined in `lib/haumea.nix`): a directory with `default.nix` exports `default` as the package (other files are loaded but not exported); a directory without `default.nix` is rejected.
 - `home-manager/modules/` declares private Home Manager options and shared glue, such as `my.*`.
 - `home-manager/profiles/` contains concrete program, language, and secret profiles.
-- `hosts/<hostname>/{darwin,nixos,home-manager}/default.nix` contains per-host overrides.
+- `hosts/<hostname>/{darwin,nixos,generic,home-manager}/default.nix` contains per-host overrides.
 - `secrets/env/` stores sops-managed encrypted environment secrets.
 - `lib/` contains shared helper functions.
 
@@ -19,7 +21,8 @@ This repository is a Nix flake for personal machine configuration across macOS, 
 Use the devshell via direnv or `nix develop`.
 
 - `hms`: run `home-manager switch --flake "$PRJ_ROOT"`.
-- `rebuild`: run the host system rebuild, then `hms`; on generic Linux it only runs Home Manager.
+- `rebuild`: run the host system activation, then `hms`; on generic Linux it installs the system Nix configuration first.
+- `nix run .#generic-rebuild [build|switch] [--flake <flake>]`: build or activate the current host's `genericConfigurations.<host>.config.system.build.activationPackage`; it resolves the host from `hostname -s`, and `switch` must run as root (the `rebuild` devshell command calls it on generic Linux).
 - `update`: run `nix flake update`, then `rebuild`.
 - `check-eval`: evaluate flake outputs for all hosts declared in `.#hosts`.
 - `check-activation`: dry-run Home Manager activation packages for all hosts declared in `.#hosts`.
@@ -37,7 +40,9 @@ nix eval .#user-pubkeys --json
 
 Write Nix with two-space indentation and prefer small, composable modules. Attribute names in new local metadata use kebab-case, such as `user-pubkeys`, `age-recipient`, and `build-nix-settings`. Keep host-independent logic in shared modules; keep host-specific choices under `hosts/<hostname>/`.
 
-Use `my.*` for private cross-module metadata that is not part of Home Manager's upstream option namespace. Current private registries are `my.lsp.servers` for reusable LSP declarations consumed by editors and coding agents, and `my.env-secrets` for environment secrets materialized by the shared sops profile.
+Prefer kebab-case for local Nix variable and helper-function names as well (`agent-languages`, `notify-server-chan`). Short, conventional helpers such as `isDarwin`, `mkHost`, and upstream library functions like `mkOption` may remain camelCase; do not rename upstream option attributes or framework-provided arguments.
+
+Use `my.*` for private cross-module metadata that is not part of Home Manager's upstream option namespace. Current private registries include `my.lsp.servers` for reusable LSP server commands, `my.languages` for language-level LSP and formatter declarations, `my.codex` for mutable Codex configuration, `my.skland` for Skland auto-sign wiring, and `my.env-secrets` for environment secrets materialized by the shared sops profile.
 
 Format Nix files with Alejandra:
 

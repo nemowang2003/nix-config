@@ -44,7 +44,14 @@
     );
 in {
   flake.build-nix-settings = cfg:
-    if cfg.isDarwin && cfg.determinate
+    if cfg.platform == "generic"
+    then {
+      nix = {
+        inherit (cfg) determinate;
+        settings = build-settings cfg;
+      };
+    }
+    else if cfg.isDarwin && cfg.determinate
     then {
       determinateNix = {
         enable = cfg.determinate;
