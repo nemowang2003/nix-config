@@ -22,21 +22,21 @@
   language-names = lib.attrNames language-mcp-servers;
   languages-json = builtins.toJSON language-mcp-servers;
 
-  codex-profile = pkgs.writeShellApplication {
-    name = "codex-profile";
+  codex-generate-profile = pkgs.writeShellApplication {
+    name = "codex-generate-profile";
     runtimeInputs = [pkgs.yj pkgs.jq];
     text = ''
       language=''${1:-}
       project_dir=''${2:-.}
 
       if [ -z "$language" ]; then
-        echo "usage: codex-profile <${lib.concatStringsSep "|" language-names}> [project-dir]" >&2
+        echo "usage: codex-generate-profile <${lib.concatStringsSep "|" language-names}> [project-dir]" >&2
         exit 1
       fi
 
       servers=$(jq -cn --arg lang "$language" --argjson all '${languages-json}' '$all[$lang] // empty')
       if [ -z "$servers" ]; then
-        echo "codex-profile: unknown language '$language' (supported: ${lib.concatStringsSep ", " language-names})" >&2
+        echo "codex-generate-profile: unknown language '$language' (supported: ${lib.concatStringsSep ", " language-names})" >&2
         exit 1
       fi
 
@@ -69,18 +69,18 @@
       yj -jt < "$merged_json" > "$merged_toml"
       install -m 644 "$merged_toml" "$config_file"
 
-      echo "codex-profile: enabled $language LSP servers in $config_file"
+      echo "codex-generate-profile: enabled $language LSP servers in $config_file"
     '';
   };
 in {
-  home.packages = [codex-profile];
+  home.packages = lib.mkIf config.my.codex.enable [codex-generate-profile];
 
-  programs.zsh.initContent = lib.mkAfter ''
-    function _codex-profile() {
+  programs.zsh.initContent = lib.mkIf config.my.codex.enable (lib.mkAfter ''
+    function _codex-generate-profile() {
       _arguments \
         '1:language:(${lib.concatStringsSep " " language-names})' \
         '2:directory:_directories'
     }
-    compdef _codex-profile codex-profile
-  '';
+    compdef _codex-generate-profile codex-generate-profile
+  '');
 }

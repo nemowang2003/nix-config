@@ -1,12 +1,11 @@
 {
+  self,
   config,
   lib,
   options,
   pkgs,
   ...
 }: let
-  inherit (lib) mkIf mkOption;
-
   cfg = config.my.codex;
   upstream = options.programs.codex;
 
@@ -14,21 +13,15 @@
   # Keep upstream responsible for MCP, plugins, profiles, skills, hooks, and
   # generated settings; only replace the main config symlink with a mutable
   # activation merge.
-  mirror-option = name:
-    mkOption ({
-        inherit (upstream.${name}) type default description;
-      }
-      // lib.optionalAttrs (upstream.${name} ? defaultText) {
-        inherit (upstream.${name}) defaultText;
-      }
-      // lib.optionalAttrs (upstream.${name} ? example) {
-        inherit (upstream.${name}) example;
-      });
 
   # A null package has no detectable version, so match programs.codex and
   # assume latest behavior.
   at-least = version: cfg.package == null || lib.versionAtLeast (lib.getVersion cfg.package) version;
   is-toml-config = at-least "0.2.0";
+  mirrored-codex-options = self.lib.options.mirror-options {
+    inherit upstream;
+    excluded = ["enable" "custom-instructions"];
+  };
 in {
   imports = [
     (lib.mkRenamedOptionModule
@@ -36,21 +29,11 @@ in {
       ["my" "codex" "context"])
   ];
 
-  options.my.codex = {
-    enable = lib.mkEnableOption "mutable Codex configuration";
-
-    package = mirror-option "package";
-    enableMcpIntegration = mirror-option "enableMcpIntegration";
-    settings = mirror-option "settings";
-    profiles = mirror-option "profiles";
-    context = mirror-option "context";
-    contextOverride = mirror-option "contextOverride";
-    hooks = mirror-option "hooks";
-    plugins = mirror-option "plugins";
-    marketplaces = mirror-option "marketplaces";
-    skills = mirror-option "skills";
-    rules = mirror-option "rules";
-  };
+  options.my.codex =
+    {
+      enable = lib.mkEnableOption "mutable Codex configuration";
+    }
+    // mirrored-codex-options;
 
   config = let
     use-xdg-directories = config.home.preferXdgDirectories && is-toml-config;
@@ -79,21 +62,12 @@ in {
       then "${yj} -jt"
       else "${yj} -jy";
   in
-    mkIf cfg.enable {
-      programs.codex = {
-        enable = true;
-        package = cfg.package;
-        enableMcpIntegration = cfg.enableMcpIntegration;
-        settings = cfg.settings;
-        profiles = cfg.profiles;
-        context = cfg.context;
-        contextOverride = cfg.contextOverride;
-        hooks = cfg.hooks;
-        plugins = cfg.plugins;
-        marketplaces = cfg.marketplaces;
-        skills = cfg.skills;
-        rules = cfg.rules;
-      };
+    lib.mkIf cfg.enable {
+      programs.codex =
+        {
+          enable = true;
+        }
+        // removeAttrs cfg ["enable" "custom-instructions"];
 
       # Keep Codex config mutable because Codex writes trust/bookkeeping state to
       # config.toml at runtime. See:
