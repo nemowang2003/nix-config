@@ -9,7 +9,7 @@ This repository is a Nix flake for personal machine configuration across macOS, 
 - `flake/configurations.nix` builds `darwinConfigurations`, `nixosConfigurations`, and `genericConfigurations` for generic Linux hosts, plus standalone `homeConfigurations` for every host.
 - `darwin/`, `nixos/`, `generic/`, and `home-manager/` contain shared modules and profiles.
 - `generic/modules/` declares generic system options and builds the nix.conf/activation package; `generic/profiles/` provides the default generic Linux configuration; `hosts/<hostname>/generic/` overrides it per host.
-- `packages/` is loaded in `flake/packages.nix` via `inputs.haumea.lib.load`, with `loader = loaders.callPackage` and `transformer = self.lib.haumea.force-shallow-transformer` (defined in `lib/haumea.nix`): a directory with `default.nix` exports `default` as the package (other files are loaded but not exported); a directory without `default.nix` is rejected.
+- `packages/` is loaded by `flake/overlays.nix` via `inputs.haumea.lib.load`, with `loader = loaders.callPackage` and `transformer = self.lib.haumea.force-shallow-transformer` (defined in `lib/haumea.nix`): a top-level `.nix` file becomes a package, and a directory must contain `default.nix` (which is exported; other files are loaded but not exported). `self.overlays.default` wraps the result as `pkgs.nemowang2003`, which `flake/nixpkgs.nix` injects into nixpkgs and `flake/packages.nix` re-exports as the flake's `packages`.
 - `home-manager/modules/` declares private Home Manager options and shared glue, such as `my.*`.
 - `home-manager/profiles/` contains concrete program, language, and secret profiles.
 - `hosts/<hostname>/{darwin,nixos,generic,home-manager}/default.nix` contains per-host overrides.

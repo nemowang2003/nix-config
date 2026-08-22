@@ -4,7 +4,7 @@
   lib,
   ...
 }: let
-  codex-notify = pkgs.callPackage ../../../../packages/codex-notify.nix {};
+  codex-notify = pkgs.nemowang2003.codex-notify;
   codex-notify-min-duration = "300";
   agent-languages =
     lib.filterAttrs

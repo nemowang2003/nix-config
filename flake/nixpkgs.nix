@@ -1,6 +1,7 @@
 {
   inputs,
   lib,
+  self,
   ...
 }: {
   perSystem = {system, ...}: {
@@ -16,6 +17,7 @@
           lib.optionalAttrs (lib.elem system ["x86_64-linux" "aarch64-darwin"]) {
             helix = inputs.helix.packages.${system}.default;
           })
+        self.overlays.default
       ];
     };
   };
