@@ -40,7 +40,7 @@ nix eval .#user-pubkeys --json
 
 Write Nix with two-space indentation and prefer small, composable modules. Attribute names in new local metadata use kebab-case, such as `user-pubkeys`, `age-recipient`, and `build-nix-settings`. Keep host-independent logic in shared modules; keep host-specific choices under `hosts/<hostname>/`.
 
-Prefer kebab-case for local Nix variable and helper-function names as well (`agent-languages`, `notify-server-chan`). Short, conventional helpers such as `isDarwin`, `mkHost`, and upstream library functions like `mkOption` may remain camelCase; do not rename upstream option attributes or framework-provided arguments.
+Prefer kebab-case for local Nix variable and helper-function names as well (`agent-languages`, `codex-notify`). Short, conventional helpers such as `isDarwin`, `mkHost`, and upstream library functions like `mkOption` may remain camelCase; do not rename upstream option attributes or framework-provided arguments.
 
 Use `my.*` for private cross-module metadata that is not part of Home Manager's upstream option namespace. Current private registries include `my.lsp.servers` for reusable LSP server commands, `my.languages` for language-level LSP and formatter declarations, `my.codex` for mutable Codex configuration, `my.skland` for Skland auto-sign wiring, and `my.env-secrets` for environment secrets materialized by the shared sops profile.
 

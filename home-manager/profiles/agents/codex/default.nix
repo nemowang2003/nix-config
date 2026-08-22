@@ -4,7 +4,8 @@
   lib,
   ...
 }: let
-  notify-server-chan = config.my.agent-notify.package;
+  codex-notify = pkgs.callPackage ../../../../packages/codex-notify.nix {};
+  codex-notify-min-duration = "300";
   agent-languages =
     lib.filterAttrs
     (_: language: language.enable && language.agent.enable)
@@ -38,6 +39,9 @@
   };
 in {
   my.env-secrets.DEEPSEEK_API_KEY.group = "common";
+  # WEBHOOK_NOTIFY_URL is a template URL with {title} and {content}
+  # placeholders; see packages/notify.nix for how they are substituted.
+  my.env-secrets.WEBHOOK_NOTIFY_URL.group = "common";
 
   my.codex = {
     enable = true;
@@ -59,7 +63,7 @@ in {
       };
 
       otel.metrics_exporter = "none";
-      notify = [(lib.getExe notify-server-chan) "Codex"];
+      notify = [(lib.getExe codex-notify) "Codex" codex-notify-min-duration];
 
       approval_policy = "never";
       sandbox_mode = "danger-full-access";
@@ -79,6 +83,24 @@ in {
         lib.mapAttrs'
         (name: server: lib.nameValuePair "${name}-lsp" (mk-lsp-mcp-server server))
         lsp-servers;
+    };
+
+    # Track each session's start so codex-notify can tell short turns from
+    # long tasks. Only startup/resume/clear reset the marker; compaction in
+    # the middle of a turn must not truncate the measured duration.
+    hooks = {
+      SessionStart = [
+        {
+          matcher = "^(startup|resume|clear)$";
+          hooks = [
+            {
+              type = "command";
+              command = "${lib.getExe codex-notify} start";
+              timeout = 3;
+            }
+          ];
+        }
+      ];
     };
   };
 }
