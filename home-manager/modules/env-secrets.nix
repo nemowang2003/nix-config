@@ -6,7 +6,7 @@
   cfg,
   ...
 }: let
-  inherit (self.sops.env) commonFile trustedFile hostFile;
+  inherit (self.sops.env) common-file trusted-file host-file;
   inherit (lib) mkOption types;
 
   mkEnvSecret = {
@@ -16,46 +16,46 @@
     scope,
   }: {
     inherit name key file scope;
-    sopsName = "env/${scope}/${name}";
+    sops-name = "env/${scope}/${name}";
   };
 
-  mkCommonEnvSecret = name: secret:
+  mkCommon = name: secret:
     mkEnvSecret {
       inherit name;
       inherit (secret) key;
-      file = commonFile;
+      file = common-file;
       scope = "common";
     };
 
-  mkTrustedEnvSecret = name: secret:
+  mkTrusted = name: secret:
     mkEnvSecret {
       inherit name;
       inherit (secret) key;
-      file = trustedFile;
+      file = trusted-file;
       scope = "trusted";
     };
 
-  mkHostEnvSecret = name: secret:
+  mkHost = name: secret:
     mkEnvSecret {
       inherit name;
       inherit (secret) key;
-      file = hostFile hostname;
+      file = host-file hostname;
       scope = "hosts/${hostname}";
     };
 
-  hasAgeRecipient = cfg.age-recipient != null;
+  has-age-recipient = cfg.age-recipient != null;
 
-  declaredEnvSecrets = lib.filterAttrs (_: secret: secret.enable) config.my.env-secrets;
+  declared-env-secrets = lib.filterAttrs (_: secret: secret.enable) config.my.env-secrets;
 
-  envSecrets = lib.concatLists (lib.mapAttrsToList (
+  env-secrets = lib.concatLists (lib.mapAttrsToList (
       name: secret:
         if secret.group == "common"
-        then lib.optionals (hasAgeRecipient && builtins.pathExists commonFile) [(mkCommonEnvSecret name secret)]
+        then lib.optionals (has-age-recipient && builtins.pathExists common-file) [(mkCommon name secret)]
         else if secret.group == "trusted"
-        then lib.optionals (hasAgeRecipient && cfg.trusted && builtins.pathExists trustedFile) [(mkTrustedEnvSecret name secret)]
-        else lib.optionals (hasAgeRecipient && builtins.pathExists (hostFile hostname)) [(mkHostEnvSecret name secret)]
+        then lib.optionals (has-age-recipient && cfg.trusted && builtins.pathExists trusted-file) [(mkTrusted name secret)]
+        else lib.optionals (has-age-recipient && builtins.pathExists (host-file hostname)) [(mkHost name secret)]
     )
-    declaredEnvSecrets);
+    declared-env-secrets);
 in {
   options.my.env-secrets = mkOption {
     type = types.attrsOf (types.submodule ({name, ...}: {
@@ -88,22 +88,22 @@ in {
       age.sshKeyPaths = ["${config.home.homeDirectory}/.ssh/id_ed25519"];
 
       secrets = builtins.listToAttrs (map (secret: {
-          name = secret.sopsName;
+          name = secret.sops-name;
           value = {
             sopsFile = secret.file;
             key = secret.key;
           };
         })
-        envSecrets);
+        env-secrets);
 
       templates."env/secrets.env".content =
         lib.concatMapStrings (secret: ''
-          export ${secret.name}="${config.sops.placeholder.${secret.sopsName}}"
+          export ${secret.name}="${config.sops.placeholder.${secret.sops-name}}"
         '')
-        envSecrets;
+        env-secrets;
     };
 
-    programs.zsh.initContent = lib.mkIf (envSecrets != []) (lib.mkBefore ''
+    programs.zsh.initContent = lib.mkIf (env-secrets != []) (lib.mkBefore ''
       if [[ -r "${config.sops.templates."env/secrets.env".path}" ]]; then
         source "${config.sops.templates."env/secrets.env".path}"
       fi

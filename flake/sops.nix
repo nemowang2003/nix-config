@@ -15,10 +15,10 @@
 in {
   flake.sops = {
     env = {
-      commonFile = env-dir + "/common.yaml";
-      trustedFile = env-dir + "/trusted.yaml";
-      hostFile = hostname: env-dir + "/hosts/${hostname}.yaml";
-      filesForHost = hostname: let
+      common-file = env-dir + "/common.yaml";
+      trusted-file = env-dir + "/trusted.yaml";
+      host-file = hostname: env-dir + "/hosts/${hostname}.yaml";
+      files-for-host = hostname: let
         cfg = self.hosts.${hostname};
       in
         builtins.filter builtins.pathExists

@@ -17,7 +17,7 @@
       command = "sh";
       args = ["-c" "ruff check --fix-only - | ruff format -"];
     };
-    helix.autoFormat = true;
+    helix.auto-format = true;
   };
 
   programs = {

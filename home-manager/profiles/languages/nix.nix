@@ -7,7 +7,7 @@
     extensions = [".nix"];
     lsp = ["nixd"];
     formatter.command = "alejandra";
-    helix.autoFormat = true;
+    helix.auto-format = true;
   };
 
   home.packages = with pkgs; [

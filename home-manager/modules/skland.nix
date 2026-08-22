@@ -6,9 +6,9 @@
   inherit (lib) mkOption types;
 
   cfg = config.my.skland;
-  defaultStateDir = "${config.xdg.stateHome}/skland-auto-sign";
+  default-state-dir = "${config.xdg.stateHome}/skland-auto-sign";
 
-  accountType = types.submodule ({name, ...}: {
+  account-type = types.submodule ({name, ...}: {
     options = {
       enable = mkOption {
         type = types.bool;
@@ -16,19 +16,19 @@
         description = "Whether to include this Skland account.";
       };
 
-      phoneSecret = mkOption {
+      phone-secret = mkOption {
         type = types.str;
         default = "SKLAND_${lib.toUpper name}_PHONE";
         description = "Secret key containing the account phone number.";
       };
 
-      passwordSecret = mkOption {
+      password-secret = mkOption {
         type = types.str;
         default = "SKLAND_${lib.toUpper name}_PASSWORD";
         description = "Secret key containing the account password.";
       };
 
-      secretGroup = mkOption {
+      secret-group = mkOption {
         type = types.enum ["common" "trusted" "host"];
         default = "host";
         description = "Recipient group backing this account's secrets.";
@@ -57,7 +57,7 @@ in {
       description = "Additional command arguments passed to skland-auto-sign.";
     };
 
-    onCalendar = mkOption {
+    on-calendar = mkOption {
       type = types.str;
       default = "*-*-* 00:00:00";
       description = "systemd timer calendar expression for the daily sign job.";
@@ -69,27 +69,27 @@ in {
       description = "Whether missed timer runs should be triggered when the user manager starts again.";
     };
 
-    randomizedDelaySec = mkOption {
+    randomized-delay-sec = mkOption {
       type = types.nullOr types.str;
       default = null;
       example = "30min";
       description = "Optional systemd timer randomized delay.";
     };
 
-    stateDir = mkOption {
+    state-dir = mkOption {
       type = types.str;
-      default = defaultStateDir;
+      default = default-state-dir;
       description = "Writable state directory for Skland credentials, refreshed tokens, and logs.";
     };
 
-    credentialFile = mkOption {
+    credential-file = mkOption {
       type = types.str;
-      default = "${defaultStateDir}/credential.json";
+      default = "${default-state-dir}/credential.json";
       description = "Writable credential file read and updated by skland-auto-sign.";
     };
 
     accounts = mkOption {
-      type = types.attrsOf accountType;
+      type = types.attrsOf account-type;
       default = {};
       description = "Declarative Skland accounts whose seed credentials should be rendered from secrets.";
     };
@@ -103,8 +103,8 @@ in {
     # TODO: assert that this module is only enabled on Linux with a user systemd manager.
     # TODO: declare my.env-secrets entries for cfg.accounts.
     # TODO: render a read-only seed credentials file from sops-managed secrets.
-    # TODO: create cfg.stateDir and merge seed credentials into cfg.credentialFile before each run.
+    # TODO: create cfg.state-dir and merge seed credentials into cfg.credential-file before each run.
     # TODO: define systemd.user.services.skland-auto-sign as a oneshot user service.
-    # TODO: define systemd.user.timers.skland-auto-sign with cfg.onCalendar and cfg.persistent.
+    # TODO: define systemd.user.timers.skland-auto-sign with cfg.on-calendar and cfg.persistent.
   };
 }

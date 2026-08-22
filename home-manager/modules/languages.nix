@@ -5,21 +5,21 @@
 }: let
   inherit (lib) mkOption types;
 
-  enabledLanguages = lib.filterAttrs (_: language: language.enable) config.my.languages;
-  referencedLspServers = lib.unique (lib.concatMap (language: language.lsp) (lib.attrValues enabledLanguages));
-  helixLanguages =
+  enabled-languages = lib.filterAttrs (_: language: language.enable) config.my.languages;
+  referenced-lsp-servers = lib.unique (lib.concatMap (language: language.lsp) (lib.attrValues enabled-languages));
+  helix-languages =
     lib.filterAttrs
     (_: language: language.helix.enable)
-    enabledLanguages;
-  helixLanguageValues = lib.attrValues helixLanguages;
-  helixLspNames = lib.unique (lib.concatMap (language: language.lsp) helixLanguageValues);
+    enabled-languages;
+  helix-language-values = lib.attrValues helix-languages;
+  helix-lsp-names = lib.unique (lib.concatMap (language: language.lsp) helix-language-values);
 
-  lspServer = name: config.my.lsp.servers.${name};
-  lspCommand = server:
+  lsp-server = name: config.my.lsp.servers.${name};
+  lsp-command = server:
     if server.command != null
     then server.command
     else lib.getExe server.package;
-  mkHelixLanguage = language:
+  mk-helix-language = language:
     {
       name = language.helix.name;
       language-servers = language.lsp;
@@ -27,7 +27,7 @@
     // lib.optionalAttrs (language.roots != []) {
       roots = language.roots;
     }
-    // lib.optionalAttrs language.helix.autoFormat {
+    // lib.optionalAttrs language.helix.auto-format {
       auto-format = true;
     }
     // lib.optionalAttrs (language.formatter != null) {
@@ -98,7 +98,7 @@ in {
           description = "Helix language name.";
         };
 
-        helix.autoFormat = mkOption {
+        helix.auto-format = mkOption {
           type = types.bool;
           default = false;
           description = "Whether Helix should format this language on save.";
@@ -114,17 +114,17 @@ in {
       assertion = lib.hasAttrByPath [lsp] config.my.lsp.servers && config.my.lsp.servers.${lsp}.enable;
       message = "my.languages references missing or disabled LSP server `${lsp}`.";
     })
-    referencedLspServers;
+    referenced-lsp-servers;
 
   config.programs.helix.languages = lib.mkIf config.programs.helix.enable {
-    language = map mkHelixLanguage helixLanguageValues;
+    language = map mk-helix-language helix-language-values;
     language-server =
-      lib.genAttrs helixLspNames
+      lib.genAttrs helix-lsp-names
       (name: let
-        server = lspServer name;
+        server = lsp-server name;
       in
         {
-          command = lspCommand server;
+          command = lsp-command server;
         }
         // lib.optionalAttrs (server.args != []) {
           args = server.args;

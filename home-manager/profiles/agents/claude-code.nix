@@ -4,15 +4,15 @@
   pkgs,
   ...
 }: let
-  agentLanguages =
+  agent-languages =
     lib.filterAttrs
     (_: language: language.enable && language.agent.enable && language.extensions != [])
     config.my.languages;
-  lspCommand = server:
+  lsp-command = server:
     if server.command != null
     then server.command
     else lib.getExe server.package;
-  primaryLsp = language:
+  primary-lsp = language:
     lib.findFirst
     (name: let
       server = config.my.lsp.servers.${name} or null;
@@ -20,10 +20,10 @@
       server != null && server.enable && server.agent.enable)
     null
     language.lsp;
-  claudeLanguages =
+  claude-languages =
     lib.filterAttrs
-    (_: language: primaryLsp language != null)
-    agentLanguages;
+    (_: language: primary-lsp language != null)
+    agent-languages;
 in {
   programs.claude-code = {
     # TODO: re-enable after Claude Code hooks are managed declaratively.
@@ -34,15 +34,15 @@ in {
     lspServers =
       lib.mapAttrs'
       (name: language: let
-        server = config.my.lsp.servers.${primaryLsp language};
+        server = config.my.lsp.servers.${primary-lsp language};
       in
         lib.nameValuePair name {
-          command = lspCommand server;
+          command = lsp-command server;
           args = server.args;
           extensionToLanguage =
             lib.listToAttrs
             (map (extension: lib.nameValuePair extension name) language.extensions);
         })
-      claudeLanguages;
+      claude-languages;
   };
 }

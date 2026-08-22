@@ -5,8 +5,8 @@
 }: let
   inherit (lib) mkOption types;
 
-  enabledServers = lib.filterAttrs (_: server: server.enable) config.my.lsp.servers;
-  pathServers = lib.filterAttrs (_: server: server.exposeToPath && server.package != null) enabledServers;
+  enabled-servers = lib.filterAttrs (_: server: server.enable) config.my.lsp.servers;
+  path-servers = lib.filterAttrs (_: server: server.expose-to-path && server.package != null) enabled-servers;
 in {
   options.my.lsp.servers = mkOption {
     type = types.attrsOf (types.submodule ({name, ...}: {
@@ -35,7 +35,7 @@ in {
           description = "Arguments passed to the LSP server.";
         };
 
-        exposeToPath = mkOption {
+        expose-to-path = mkOption {
           type = types.bool;
           default = true;
           description = "Whether to expose this LSP server package in PATH.";
@@ -61,6 +61,6 @@ in {
       })
       config.my.lsp.servers;
 
-    home.packages = lib.unique (lib.mapAttrsToList (_: server: server.package) pathServers);
+    home.packages = lib.unique (lib.mapAttrsToList (_: server: server.package) path-servers);
   };
 }

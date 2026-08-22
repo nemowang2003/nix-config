@@ -34,11 +34,11 @@ in {
   };
 
   home.activation = {
-    createSshSocketDir = lib.hm.dag.entryAfter ["writeBoundary"] ''
+    create-ssh-socket-dir = lib.hm.dag.entryAfter ["writeBoundary"] ''
       $DRY_RUN_CMD mkdir -m 700 -p $VERBOSE_ARG ${config.home.homeDirectory}/.ssh/sockets
     '';
 
-    writeAuthorizedKeysFile = lib.hm.dag.entryAfter ["writeBoundary"] ''
+    write-authorized-keys-file = lib.hm.dag.entryAfter ["writeBoundary"] ''
       AUTH_FILE="${config.home.homeDirectory}/.ssh/authorized_keys"
 
       if [ -f "$AUTH_FILE" ] && [ ! -L "$AUTH_FILE" ]; then
