@@ -33,6 +33,7 @@
       determinate = true;
       domestic = false;
       platform = "generic";
+      age-recipient = "age1xfkzdpdpcq00y5kutfgw0uawqekv26h4e6hnvgdnxs7vd20esylq5fqwnk";
     };
     "sg-a01" = mkHost {
       arch = "aarch64-linux";
