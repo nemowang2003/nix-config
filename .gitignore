@@ -1,2 +1,4 @@
 .direnv
 .sops.yaml
+.public-ips.json
+.public-ips.sha256

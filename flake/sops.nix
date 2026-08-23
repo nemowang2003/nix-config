@@ -39,6 +39,14 @@ in {
       creation_rules =
         [
           {
+            path_regex = "secrets/text/common\\.yaml$";
+            key_groups = [
+              {
+                age = lib.attrValues host-recipients;
+              }
+            ];
+          }
+          {
             path_regex = "secrets/env/common\\.yaml$";
             key_groups = [
               {

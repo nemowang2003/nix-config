@@ -6,31 +6,53 @@
   ...
 }: let
   nc = lib.getExe pkgs.netcat;
+  public-hosts = lib.filterAttrs (_: cfg: cfg.public) self.hosts;
+  mk-public-block = hostname: cfg: let
+    ip = self.public-ips.${hostname} or null;
+    proxy-extra =
+      if cfg.domestic
+      then {remoteForward = "7890 127.0.0.1:7890";}
+      else {proxyCommand = "${nc} -X 5 -x 127.0.0.1:7890 %h %p";};
+  in
+    lib.optionalAttrs (ip != null) {
+      "${hostname}" = {
+        header = "Host ${hostname}";
+        hostName = ip;
+        hostKeyAlias = hostname;
+        user = cfg.user;
+      };
+      "${hostname}-proxy" =
+        {
+          header = ''Match host ${hostname} exec "${nc} -z 127.0.0.1 7890"'';
+        }
+        // proxy-extra;
+    };
 in {
   programs.ssh = {
     enable = true;
     enableDefaultConfig = false;
 
-    settings = {
-      "github" = {
-        header = ''Match host github.com exec "${nc} -z 127.0.0.1 7890"'';
-        proxyCommand = "${nc} -X 5 -x 127.0.0.1:7890 %h %p";
-        user = "git";
-      };
+    # Every public host always resolves to its public IP (read from the
+    # devshell-generated .public-ips.json). When the local proxy is up,
+    # overseas hosts additionally route through it and domestic hosts get a
+    # reverse tunnel for it; when it is down the direct IP block still applies.
+    settings =
+      {
+        "github" = {
+          header = ''Match host github.com exec "${nc} -z 127.0.0.1 7890"'';
+          proxyCommand = "${nc} -X 5 -x 127.0.0.1:7890 %h %p";
+          user = "git";
+        };
 
-      "domestic-server-tunnel" = {
-        header = ''Match host cn-* exec "${nc} -z 127.0.0.1 7890"'';
-        remoteForward = "7890 127.0.0.1:7890";
-      };
-
-      "Host *" = {
-        serverAliveInterval = 60;
-        serverAliveCountMax = 3;
-        controlMaster = "auto";
-        controlPath = "${config.home.homeDirectory}/.ssh/sockets/%r@%h-%p";
-        controlPersist = "10m";
-      };
-    };
+        "Host *" = {
+          serverAliveInterval = 60;
+          serverAliveCountMax = 3;
+          controlMaster = "auto";
+          controlPath = "${config.home.homeDirectory}/.ssh/sockets/%r@%h-%p";
+          controlPersist = "10m";
+        };
+      }
+      // lib.concatMapAttrs mk-public-block public-hosts;
   };
 
   home.activation = {

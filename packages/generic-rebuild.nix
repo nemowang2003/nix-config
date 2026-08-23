@@ -1,7 +1,6 @@
 {pkgs, ...}:
 pkgs.writeShellApplication {
   name = "generic-rebuild";
-  runtimeInputs = [pkgs.nix];
   text = ''
     set -euo pipefail
 
@@ -29,7 +28,7 @@ pkgs.writeShellApplication {
 
     case "$action" in
       build)
-        nix build --no-link --print-out-paths "$attr"
+        nix build --impure --no-link --print-out-paths "$attr"
         ;;
       switch)
         if (( EUID != 0 )); then
@@ -37,7 +36,7 @@ pkgs.writeShellApplication {
           exit 1
         fi
 
-        activation="$(nix build --no-link --print-out-paths "$attr")"
+        activation="$(nix build --impure --no-link --print-out-paths "$attr")"
         exec "$activation/bin/generic-system-activate"
         ;;
     esac
