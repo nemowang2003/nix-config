@@ -149,7 +149,7 @@
               if [[ -e /etc/NIXOS ]]; then
                 sudo nixos-rebuild switch --impure --flake "$PRJ_ROOT" && hms
               else
-                sudo "${lib.getExe self.packages.${system}.generic-rebuild}" switch --flake "$PRJ_ROOT" && hms
+                sudo env "PATH=$PATH" "${lib.getExe self.packages.${system}.generic-rebuild}" switch --flake "$PRJ_ROOT" && hms
               fi
             '';
         }
