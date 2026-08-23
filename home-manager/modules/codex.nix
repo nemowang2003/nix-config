@@ -32,10 +32,55 @@ in {
   options.my.codex =
     {
       enable = lib.mkEnableOption "mutable Codex configuration";
+
+      contexts = lib.mkOption {
+        type = lib.types.listOf (lib.types.either lib.types.lines lib.types.path);
+        default = [];
+        description = ''
+          Chunks that are concatenated into Codex's global {file}`AGENTS.md`,
+          in priority order. Each element is either inline content or a path
+          to a file.
+
+          Host modules can combine {command}`lib.mkBefore`,
+          {command}`lib.mkAfter` and {command}`lib.mkForce` with
+          {command}`lib.mkMerge` to add host-specific sections around shared
+          content or replace every chunk. The assembled result is passed to
+          {option}`programs.codex.context`; setting
+          {option}`my.codex.context` directly (with {command}`lib.mkForce`)
+          remains a final override.
+        '';
+        example = lib.literalExpression ''
+          # hosts/<hostname>/home-manager/default.nix
+          {
+            my.codex.contexts = lib.mkMerge [
+              (lib.mkBefore [
+                '''
+                  # Host-specific instructions
+                '''
+              ])
+              (lib.mkAfter [
+                '''
+                  # More host-specific instructions
+                '''
+              ])
+            ];
+          }
+        '';
+      };
     }
     // mirrored-codex-options;
 
   config = let
+    render-context-chunk = chunk:
+      if builtins.isPath chunk
+      then builtins.readFile chunk
+      else chunk;
+
+    context-chunks =
+      lib.filter
+      (chunk: chunk != "")
+      (map (chunk: lib.trim (render-context-chunk chunk)) cfg.contexts);
+
     use-xdg-directories = config.home.preferXdgDirectories && is-toml-config;
     xdg-config-home = lib.removePrefix config.home.homeDirectory config.xdg.configHome;
     config-dir =
@@ -63,11 +108,15 @@ in {
       else "${yj} -jy";
   in
     lib.mkIf cfg.enable {
+      my.codex.context = lib.mkIf (context-chunks != []) (
+        lib.concatStringsSep "\n\n" context-chunks
+      );
+
       programs.codex =
         {
           enable = true;
         }
-        // removeAttrs cfg ["enable" "custom-instructions"];
+        // removeAttrs cfg ["enable" "custom-instructions" "contexts"];
 
       # Keep Codex config mutable because Codex writes trust/bookkeeping state to
       # config.toml at runtime. See:

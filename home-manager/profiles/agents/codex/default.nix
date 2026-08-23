@@ -39,15 +39,20 @@
   };
 in {
   my.env-secrets.DEEPSEEK_API_KEY.group = "common";
-  # WEBHOOK_NOTIFY_URL is a template URL with {title} and {content}
-  # placeholders; see packages/notify.nix for how they are substituted.
-  my.env-secrets.WEBHOOK_NOTIFY_URL.group = "common";
+  # SERVERCHAN_SEND_URL is the bare ServerChan³ send endpoint; codex-notify
+  # POSTs title/desp to it. See packages/serverchan-notify.nix.
+  my.env-secrets.SERVERCHAN_SEND_URL.group = "common";
+
+  home.shellAliases."codex-list-sessions" = ''
+    ${lib.getExe pkgs.sqlite} -readonly -header -column "${config.home.homeDirectory}/.codex/state_5.sqlite" \
+      "SELECT id, cwd, title FROM threads ORDER BY updated_at DESC;" | $EDITOR
+  '';
 
   my.codex = {
     enable = true;
     enableMcpIntegration = true;
     package = pkgs.llm-agents.codex;
-    context = ./AGENTS.md;
+    contexts = [./AGENTS.md];
     settings = {
       model = "deepseek-v4-pro";
       model_provider = "deepseek";
