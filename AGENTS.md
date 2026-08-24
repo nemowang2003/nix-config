@@ -27,7 +27,9 @@ Use the devshell via direnv or `nix develop`.
 - `check-eval`: evaluate flake outputs for all hosts declared in `.#hosts`.
 - `check-activation`: dry-run Home Manager activation packages for all hosts declared in `.#hosts`.
 - `gh-keysync`: publish declared SSH public keys to GitHub.
-- `sops-edit-env [common|trusted|hostname]`: edit common, trusted, or host-specific encrypted environment secrets.
+- `sops <path>`: edit encrypted secrets in-place (e.g. `sops secrets/text/2fa.yaml`);
+  the devshell startup hook keeps `.sops.yaml` in sync so recipients are picked
+  from each path's creation rule.
 
 Useful low-level checks:
 

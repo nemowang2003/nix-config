@@ -31,7 +31,6 @@
       '';
     };
     jq = lib.getExe pkgs.jq;
-    sops = lib.getExe pkgs.sops;
     gh = lib.getExe pkgs.gh;
     home-manager = lib.getExe pkgs.home-manager;
   in {
@@ -40,6 +39,8 @@
     packages.sops-yaml = sops-yaml.configFile;
 
     devshells.default = {
+      packages = [pkgs.sops];
+
       devshell.startup.sops-yaml.text = sops-yaml.shellHook;
 
       env = [
@@ -156,49 +157,6 @@
               ${gh} ssh-key add - --title "$name" <<< "$key"
               ${gh} ssh-key add - --type signing --title "$name" <<< "$key"
             done
-          '';
-        }
-        {
-          name = "sops-edit-env";
-          category = "secrets";
-          help = "sops secrets/env/{common,trusted}.yaml / secrets/env/hosts/<hostname>.yaml";
-          command = ''
-            set -euo pipefail
-            mkdir -p "$PRJ_ROOT/secrets/env/hosts"
-            case "''${1:-common}" in
-              common)
-                ${sops} "$PRJ_ROOT/secrets/env/common.yaml"
-                ;;
-              trusted)
-                ${sops} "$PRJ_ROOT/secrets/env/trusted.yaml"
-                ;;
-              *)
-                ${sops} "$PRJ_ROOT/secrets/env/hosts/$1.yaml"
-                ;;
-            esac
-          '';
-        }
-        {
-          name = "sops-edit-text";
-          category = "secrets";
-          help = "sops secrets/text/{public-ips,serverchan,2fa}";
-          command = ''
-            set -euo pipefail
-            case "''${1:-serverchan}" in
-              public-ips)
-                ${sops} "$PRJ_ROOT/secrets/text/public-ips.yaml"
-                ;;
-              serverchan)
-                ${sops} "$PRJ_ROOT/secrets/text/serverchan.json"
-                ;;
-              2fa)
-                ${sops} "$PRJ_ROOT/secrets/text/2fa.yaml"
-                ;;
-              *)
-                echo "usage: sops-edit-text [public-ips|serverchan|2fa]" >&2
-                exit 1
-                ;;
-            esac
           '';
         }
       ];
