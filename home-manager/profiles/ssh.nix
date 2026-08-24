@@ -50,6 +50,7 @@ in {
           controlMaster = "auto";
           controlPath = "${config.home.homeDirectory}/.ssh/sockets/%r@%h-%p";
           controlPersist = "10m";
+          updateHostKeys = false;
         };
       }
       // lib.concatMapAttrs mk-public-block public-hosts;
