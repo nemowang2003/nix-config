@@ -1,4 +1,5 @@
 {
+  self,
   config,
   pkgs,
   lib,
@@ -39,9 +40,17 @@
   };
 in {
   my.env-secrets.DEEPSEEK_API_KEY.group = "common";
-  # SERVERCHAN_SEND_URL is the bare ServerChan³ send endpoint; codex-notify
-  # POSTs title/desp to it. See packages/serverchan-notify.nix.
-  my.env-secrets.SERVERCHAN_SEND_URL.group = "common";
+
+  # ServerChan³ send endpoints for codex-notify: a map of profile name to the
+  # bare push URL. `me` is the default recipient; other names are selectable
+  # per thread with `codex-notify route <thread-id> <name>`.
+  sops.secrets."text/serverchan" = {
+    sopsFile = self.sops.text.serverchan-file;
+    key = "";
+    format = "json";
+    path = "${config.xdg.configHome}/codex-notify/urls.json";
+    mode = "0600";
+  };
 
   home.shellAliases."codex-list-sessions" = ''
     ${lib.getExe pkgs.sqlite} -readonly -header -column "${config.home.homeDirectory}/.codex/state_5.sqlite" \
@@ -68,7 +77,6 @@ in {
       };
 
       otel.metrics_exporter = "none";
-      notify = [(lib.getExe codex-notify) "Codex" codex-notify-min-duration];
 
       approval_policy = "never";
       sandbox_mode = "danger-full-access";
@@ -90,17 +98,34 @@ in {
         lsp-servers;
     };
 
-    # Track each session's start so codex-notify can tell short turns from
-    # long tasks. Only startup/resume/clear reset the marker; compaction in
-    # the middle of a turn must not truncate the measured duration.
+    # codex-notify wiring. Turn completion is driven by the Stop hook (the
+    # legacy `notify` config key is slated for removal); codex-notify always
+    # exits 0 so it never blocks a turn. UserPromptSubmit stamps the per-turn
+    # start, and /goal continuations bypass it - which is what lets
+    # codex-notify recognize goal checkpoints. No SessionEnd hook: it fires on
+    # every teardown with a constant reason, so stale state is instead GC'd by
+    # codex-notify's seven-day TTL.
     hooks = {
-      SessionStart = [
+      UserPromptSubmit = [
         {
-          matcher = "^(startup|resume|clear)$";
+          matcher = ".*";
           hooks = [
             {
               type = "command";
-              command = "${lib.getExe codex-notify} start";
+              command = "${lib.getExe codex-notify} prompt";
+              timeout = 3;
+            }
+          ];
+        }
+      ];
+
+      Stop = [
+        {
+          matcher = ".*";
+          hooks = [
+            {
+              type = "command";
+              command = "${lib.getExe codex-notify} notify Codex ${codex-notify-min-duration}";
               timeout = 3;
             }
           ];
