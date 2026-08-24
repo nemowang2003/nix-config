@@ -14,6 +14,11 @@
     (lib.filterAttrs (_: cfg: cfg.trusted && cfg.age-recipient != null) self.hosts);
 in {
   flake.sops = {
+    text = {
+      serverchan-file = ../secrets/text/serverchan.json;
+      twofa-file = ../secrets/text/2fa.yaml;
+    };
+
     env = {
       common-file = env-dir + "/common.yaml";
       trusted-file = env-dir + "/trusted.yaml";
@@ -38,6 +43,22 @@ in {
     yaml = {
       creation_rules =
         [
+          {
+            path_regex = "secrets/text/serverchan\\.json$";
+            key_groups = [
+              {
+                age = lib.attrValues host-recipients;
+              }
+            ];
+          }
+          {
+            path_regex = "secrets/text/2fa\\.yaml$";
+            key_groups = [
+              {
+                age = lib.attrValues trusted-recipients;
+              }
+            ];
+          }
           {
             path_regex = "secrets/text/common\\.yaml$";
             key_groups = [

@@ -196,6 +196,26 @@
             esac
           '';
         }
+        {
+          name = "sops-edit-text";
+          category = "secrets";
+          help = "sops secrets/text/serverchan.json / secrets/text/2fa.yaml";
+          command = ''
+            set -euo pipefail
+            case "''${1:-serverchan}" in
+              serverchan)
+                ${sops} "$PRJ_ROOT/secrets/text/serverchan.json"
+                ;;
+              2fa)
+                ${sops} "$PRJ_ROOT/secrets/text/2fa.yaml"
+                ;;
+              *)
+                echo "usage: sops-edit-text [serverchan|2fa]" >&2
+                exit 1
+                ;;
+            esac
+          '';
+        }
       ];
     };
   };
