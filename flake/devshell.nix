@@ -41,24 +41,6 @@
 
     devshells.default = {
       devshell.startup.sops-yaml.text = sops-yaml.shellHook;
-      devshell.startup.public-ips.text = ''
-        src="$PRJ_ROOT/secrets/text/common.yaml"
-        dst="$PRJ_ROOT/.public-ips.json"
-        marker="$PRJ_ROOT/.public-ips.sha256"
-
-        current="$(${pkgs.coreutils}/bin/sha256sum "$src" 2>/dev/null || true)"
-        current="''${current%% *}"
-
-        if [[ -f "$marker" && "$(cat "$marker")" == "$current" && -f "$dst" ]]; then
-          :
-        else
-          tmp="$dst.tmp"
-          if ${sops} -d --output-type json "$src" 2>/dev/null | ${jq} -c . > "$tmp"; then
-            mv "$tmp" "$dst"
-            printf '%s' "$current" > "$marker"
-          fi
-        fi
-      '';
 
       env = [
         {
@@ -199,10 +181,13 @@
         {
           name = "sops-edit-text";
           category = "secrets";
-          help = "sops secrets/text/serverchan.json / secrets/text/2fa.yaml";
+          help = "sops secrets/text/{public-ips,serverchan,2fa}";
           command = ''
             set -euo pipefail
             case "''${1:-serverchan}" in
+              public-ips)
+                ${sops} "$PRJ_ROOT/secrets/text/public-ips.yaml"
+                ;;
               serverchan)
                 ${sops} "$PRJ_ROOT/secrets/text/serverchan.json"
                 ;;
@@ -210,7 +195,7 @@
                 ${sops} "$PRJ_ROOT/secrets/text/2fa.yaml"
                 ;;
               *)
-                echo "usage: sops-edit-text [serverchan|2fa]" >&2
+                echo "usage: sops-edit-text [public-ips|serverchan|2fa]" >&2
                 exit 1
                 ;;
             esac

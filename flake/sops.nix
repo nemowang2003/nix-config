@@ -17,6 +17,7 @@ in {
     text = {
       serverchan-file = ../secrets/text/serverchan.json;
       twofa-file = ../secrets/text/2fa.yaml;
+      public-ips-file = ../secrets/text/public-ips.yaml;
     };
 
     env = {
@@ -60,7 +61,7 @@ in {
             ];
           }
           {
-            path_regex = "secrets/text/common\\.yaml$";
+            path_regex = "secrets/text/public-ips\\.yaml$";
             key_groups = [
               {
                 age = lib.attrValues host-recipients;

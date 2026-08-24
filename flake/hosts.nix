@@ -50,20 +50,7 @@
     lib.mapAttrsToList
     (hostname: cfg: cfg.user-pubkey)
     (lib.filterAttrs (hostname: cfg: cfg.user-pubkey != null) hosts);
-  # Public IPs live encrypted in secrets/text/common.yaml. The devshell
-  # decrypts them into the gitignored .public-ips.json, which --impure
-  # evaluation reads here so the plaintext can land in /nix/store. Pure
-  # evaluation or a failed decrypt falls back to {}.
-  public-ips = let
-    project-root = builtins.getEnv "PRJ_ROOT";
-    read-public-ips = builtins.tryEval (
-      builtins.fromJSON (builtins.readFile (project-root + "/.public-ips.json"))
-    );
-  in
-    if project-root != "" && read-public-ips.success
-    then read-public-ips.value
-    else {};
 in {
-  flake = {inherit hosts user-pubkeys public-ips;};
+  flake = {inherit hosts user-pubkeys;};
   systems = lib.unique (lib.catAttrs "arch" (builtins.attrValues hosts));
 }
