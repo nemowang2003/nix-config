@@ -458,7 +458,14 @@ class Relay:
             )
 
     async def _run_once(self):
-        async with connect(self.ws_url) as ws:
+        # proxy=None: connect directly; the WeCom endpoint is domestic and
+        # must not be routed through the user's overseas SOCKS proxy
+        # (websockets otherwise honors ALL_PROXY/https_proxy).
+        # ping_interval=None: WeCom's keepalive is the application-level
+        # `cmd: ping` we send every 30s; the library's protocol-level pings
+        # are rejected (1002). compression=None: WeCom sends frames with
+        # reserved bits that break permessage-deflate negotiation.
+        async with connect(self.ws_url, proxy=None, ping_interval=None, compression=None) as ws:
             self.log.info("connected to %s", self.ws_url)
             await self._send(
                 ws,
