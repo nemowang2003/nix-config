@@ -248,13 +248,29 @@ class Relay:
         self.state_dir = state_dir
         self.outbox = os.path.join(state_dir, "outbox.jsonl")
         self.tokens_path = os.path.join(state_dir, "tokens.json")
+        self.chatid_path = os.path.join(state_dir, "chatid")
+        self.last_push_path = os.path.join(state_dir, "last-push.json")
         self.log = log
         self._seq = 0
         self._seen = deque(maxlen=1000)
         self._tokens = {}
-        self._last_chatid = ""
+        self._last_push = {}
+        self._last_chatid = self.push_chatid or self._load_chatid()
         self._turns = asyncio.Semaphore(4)
         self._load_tokens()
+        self._load_last_push()
+
+    def _load_chatid(self):
+        try:
+            with open(self.chatid_path, encoding="utf-8") as handle:
+                return handle.read().strip()
+        except OSError:
+            return ""
+
+    def _save_chatid(self):
+        os.makedirs(self.state_dir, exist_ok=True)
+        with open(self.chatid_path, "w", encoding="utf-8") as handle:
+            handle.write(self._last_chatid + "\n")
 
     def _load_tokens(self):
         try:
@@ -271,6 +287,23 @@ class Relay:
         os.makedirs(self.state_dir, exist_ok=True)
         with open(self.tokens_path, "w", encoding="utf-8") as handle:
             json.dump(self._tokens, handle)
+
+    def _load_last_push(self):
+        try:
+            with open(self.last_push_path, encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, json.JSONDecodeError):
+            return
+        self._last_push = {
+            chatid: entry
+            for chatid, entry in data.items()
+            if entry.get("token") in self._tokens
+        }
+
+    def _save_last_push(self):
+        os.makedirs(self.state_dir, exist_ok=True)
+        with open(self.last_push_path, "w", encoding="utf-8") as handle:
+            json.dump(self._last_push, handle)
 
     def _req_id(self):
         self._seq += 1
@@ -361,6 +394,12 @@ class Relay:
                 },
             )
             self.log.info("pushed thread=%s token=r#%s", thread_id, token)
+            self._last_push[target] = {
+                "token": token,
+                "thread": thread_id,
+                "at": int(time.time()),
+            }
+            self._save_last_push()
 
     async def _outbox_loop(self, ws):
         while True:
@@ -374,11 +413,12 @@ class Relay:
         text = (body.get("text") or {}).get("content", "")
         quote = body.get("quote") or {}
         quoted = (quote.get("text") or {}).get("content", "")
+        userid = (body.get("from") or {}).get("userid")
+        if userid and userid != self._last_chatid:
+            self._last_chatid = userid
+            self._save_chatid()
         match = TOKEN_RE.search(quoted) or TOKEN_RE.search(text)
         if match:
-            userid = (body.get("from") or {}).get("userid")
-            if userid:
-                self._last_chatid = userid
             return match.group(1), re.sub(r"^\s*@\S+\s*", "", text)
         return None, text
 
@@ -436,6 +476,7 @@ class Relay:
 
     async def _handle_callback(self, ws, callback):
         body = callback.get("body", {})
+        self.log.debug("callback: %s", json.dumps(callback, ensure_ascii=False))
         msgid = body.get("msgid")
         if msgid:
             if msgid in self._seen:
@@ -445,6 +486,14 @@ class Relay:
             self.log.info("ignoring non-text message msgtype=%s", body.get("msgtype"))
             return
         token, text = self._extract_reply(body)
+        if not token:
+            # No quote and no token in the text: continue the most recent
+            # conversation the relay pushed to this sender.
+            userid = (body.get("from") or {}).get("userid", "")
+            entry = self._last_push.get(userid)
+            if entry:
+                token = entry["token"]
+                self.log.info("reply fallback: last push for chatid=%s", userid)
         if token and token in self._tokens:
             thread_id = self._tokens[token]["thread"]
             self.log.info("reply token=r#%s thread=%s", token, thread_id)
@@ -454,7 +503,7 @@ class Relay:
             await self._respond_markdown(
                 ws,
                 callback,
-                "没有找到对应任务：请引用某条 Codex 完成通知再回复，或让 Codex 先完成一轮。",
+                "没有找到对应任务：请先让 Codex 完成一轮，或引用某条完成通知再回复。",
             )
 
     async def _run_once(self):
@@ -473,10 +522,12 @@ class Relay:
                 {"bot_id": self.bot_id, "secret": self.secret},
             )
             subscribed = False
+            last_activity = [time.monotonic()]
 
             async def receive():
                 nonlocal subscribed
                 async for raw in ws:
+                    last_activity[0] = time.monotonic()
                     message = json.loads(raw)
                     cmd = message.get("cmd")
                     if cmd == "aibot_msg_callback":
@@ -508,7 +559,13 @@ class Relay:
                     await asyncio.sleep(PING_INTERVAL)
                     await self._send(ws, "ping")
 
-            await asyncio.gather(receive(), heartbeat(), self._outbox_loop(ws))
+            async def watchdog():
+                while True:
+                    await asyncio.sleep(30)
+                    if time.monotonic() - last_activity[0] > 90:
+                        raise ConnectionError("no server activity for 90s")
+
+            await asyncio.gather(receive(), heartbeat(), self._outbox_loop(ws), watchdog())
 
     async def run(self):
         backoff = 1
