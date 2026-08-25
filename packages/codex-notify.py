@@ -59,6 +59,11 @@ config_dir = os.path.join(
     "codex-notify",
 )
 urls_file = os.path.join(config_dir, "urls.json")
+reply_outbox = os.path.join(
+    os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")),
+    "codex-reply",
+    "outbox.jsonl",
+)
 
 PS_TOAST_SCRIPT = """
 $t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("%s"));
@@ -191,6 +196,18 @@ def notify_local(title, content):
         )
     except (OSError, subprocess.TimeoutExpired):
         pass
+
+
+def queue_wecom_push(thread_id, content):
+    """Ask the codex-reply relay to push a replyable WeCom notification."""
+    try:
+        os.makedirs(os.path.dirname(reply_outbox), exist_ok=True)
+        preview = " ".join(content.split())[:120]
+        entry = json.dumps({"thread": thread_id, "preview": preview, "at": int(time.time())})
+        with open(reply_outbox, "a", encoding="utf-8") as handle:
+            handle.write(entry + "\n")
+    except OSError:
+        log("notify wecom outbox write failed")
 
 
 def send_serverchan(title, content, url):
@@ -365,7 +382,9 @@ def cmd_notify(args):
             rc = send_serverchan(full_title, content, url)
             log(f"notify serverchan done rc={rc}")
     elif duration >= threshold:
-        log(f"notify serverchan mode=user duration={duration} threshold={threshold} route={profile}")
+        log(
+            f"notify serverchan mode=user duration={duration} threshold={threshold} route={profile}"
+        )
         if not url:
             log("notify serverchan skip: url profile missing")
         else:
@@ -373,6 +392,9 @@ def cmd_notify(args):
             log(f"notify serverchan done rc={rc}")
     else:
         log(f"notify serverchan skip duration={duration} threshold={threshold}")
+
+    if is_goal or duration >= threshold:
+        queue_wecom_push(thread_id, content)
 
     state["notify"] = int(now)
     save_state(thread_id, state)

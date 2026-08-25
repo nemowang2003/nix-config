@@ -1,4 +1,5 @@
 {
+  self,
   config,
   pkgs,
   lib,
@@ -46,6 +47,16 @@ in {
     file = "serverchan.json";
     format = "json";
     path = "${config.xdg.configHome}/codex-notify/urls.json";
+    mode = "0600";
+  };
+
+  # 企业微信智能机器人凭据 for codex-reply; declared only once the
+  # encrypted file exists so hosts still evaluate before the secret is added.
+  my.secrets.files."wechat-work" = lib.mkIf (builtins.pathExists (self.sops.dirs.trusted + "/wechat-work.json")) {
+    scope = "trusted";
+    file = "wechat-work.json";
+    format = "json";
+    path = "${config.xdg.configHome}/codex-reply/wechat-work.json";
     mode = "0600";
   };
 

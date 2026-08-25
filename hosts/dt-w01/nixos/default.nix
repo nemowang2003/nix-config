@@ -4,12 +4,13 @@
   cfg,
   ...
 }: let
-  uv = lib.getExe pkgs.uv;
   codex = lib.getExe pkgs.llm-agents.codex;
+  codex-reply = lib.getExe pkgs.nemowang2003.codex-reply;
   user-home = "/home/${cfg.user}";
   # Materialized wholesale by home-manager's secrets module from
   # secrets/common/env; KEY=VALUE data is natively parsable by systemd.
   codex-env-file = "${user-home}/.config/sops-nix/env/common";
+  wechat-work-config = "${user-home}/.config/codex-reply/wechat-work.json";
 in {
   systemd = {
     services.codex-app-server = {
@@ -36,28 +37,34 @@ in {
       };
     };
 
-    services.skyland-auto-sign = {
-      description = "Skyland Auto Sign Service";
-      after = ["network-online.target"];
-      wants = ["network-online.target"];
+    services.codex-reply = {
+      description = "WeCom 智能机器人长连接 relay，回复注入本地 app-server";
+      after = ["codex-app-server.service"];
+      wants = ["codex-app-server.service"];
+      wantedBy = ["multi-user.target"];
 
       serviceConfig = {
-        Type = "oneshot";
+        Type = "simple";
         User = cfg.user;
-        WorkingDirectory = "/home/${cfg.user}/skyland-auto-sign";
-        ExecStart = "${uv} run src/main.py";
+        WorkingDirectory = user-home;
+        Environment = [
+          "XDG_CACHE_HOME=${user-home}/.cache"
+          "XDG_CONFIG_HOME=${user-home}/.config"
+          "XDG_STATE_HOME=${user-home}/.local/state"
+        ];
+        ExecStart = "${codex-reply} --config ${wechat-work-config}";
+        Restart = "on-failure";
+        RestartSec = "5s";
+        KillSignal = "SIGINT";
+        TimeoutStopSec = "10s";
       };
     };
 
-    timers.skyland-auto-sign = {
-      description = "Run Skyland Auto Sign daily";
-      wantedBy = ["timers.target"];
-      timerConfig = {
-        OnCalendar = "*-*-* 00:00:00";
-        Persistent = true;
-        Unit = "skyland-auto-sign.service";
-      };
-    };
+    # Keep the user systemd instance (and its timers) alive across WSL
+    # sessions, e.g. the skyland-auto-sign daily user timer.
+    tmpfiles.rules = [
+      "f /var/lib/systemd/linger/${cfg.user} 0644 root root -"
+    ];
   };
 
   system.stateVersion = "25.05";
