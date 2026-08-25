@@ -38,7 +38,7 @@ in {
     };
 
     services.codex-reply = {
-      description = "WeCom 智能机器人长连接 relay，回复注入本地 app-server";
+      description = "企业微信智能机器人长连接：投递 codex-notify 路由好的通知，并把用户回复注入本地 app-server";
       after = ["codex-app-server.service"];
       wants = ["codex-app-server.service"];
       wantedBy = ["multi-user.target"];

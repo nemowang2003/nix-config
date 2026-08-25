@@ -1,6 +1,6 @@
-"""WeCom smart-bot long-connection relay wired to a local Codex app-server.
+"""WeCom smart-bot long-connection transport wired to a local Codex app-server.
 
-The relay speaks the WeCom smart-bot WebSocket protocol (official doc
+It speaks the WeCom smart-bot WebSocket protocol (official doc
 path/101463): subscribe with BotID/Secret, keep the connection alive with
 application-level ping, receive `aibot_msg_callback`, and answer via
 `aibot_respond_msg`.
@@ -8,11 +8,12 @@ application-level ping, receive `aibot_msg_callback`, and answer via
 Two loops feed it:
 
 - codex-notify appends one JSON line per completed turn to
-  $XDG_STATE_HOME/codex-reply/outbox.jsonl; the relay pushes it to WeCom as a
-  markdown message that embeds a short `r#xxxxxxxx` token and records
-  token -> thread in tokens.json.
+  $XDG_STATE_HOME/codex-reply/outbox.jsonl. Each line already carries the
+  target chatid resolved by the thread's route; this process only delivers.
+  The message is pushed to WeCom as markdown embedding a short `r#xxxxxxxx`
+  token, and token -> thread is recorded in tokens.json.
 - When the user quotes that message and replies, the callback's quote field
-  carries the token; the relay resolves it to the thread, starts a turn on
+  carries the token; it resolves the token to the thread, starts a turn on
   the local app-server (`turn/start`) and streams the agent text back as a
   WeCom stream message.
 
@@ -21,7 +22,7 @@ $CODEX_HOME/app-server-control/app-server-control.sock speaks websocket over a
 Unix socket; a minimal client for it is embedded below so the only external
 dependency is the WeCom-facing `websockets` library.
 
-Credentials (bot_id, secret, optional chatid) live in
+Credentials (bot_id, secret) live in
 $XDG_CONFIG_HOME/codex-reply/wechat-work.json, materialized by sops-nix. Logs
 go to stderr for journald; credentials, tokens and message content are never
 logged.
@@ -235,7 +236,6 @@ def load_config(path):
     return {
         "bot_id": bot_id,
         "secret": secret,
-        "chatid": config.get("chatid") or "",
     }
 
 
@@ -243,34 +243,19 @@ class Relay:
     def __init__(self, config, ws_url, state_dir, log):
         self.bot_id = config["bot_id"]
         self.secret = config["secret"]
-        self.push_chatid = config["chatid"]
         self.ws_url = ws_url
         self.state_dir = state_dir
         self.outbox = os.path.join(state_dir, "outbox.jsonl")
         self.tokens_path = os.path.join(state_dir, "tokens.json")
-        self.chatid_path = os.path.join(state_dir, "chatid")
         self.last_push_path = os.path.join(state_dir, "last-push.json")
         self.log = log
         self._seq = 0
         self._seen = deque(maxlen=1000)
         self._tokens = {}
         self._last_push = {}
-        self._last_chatid = self.push_chatid or self._load_chatid()
         self._turns = asyncio.Semaphore(4)
         self._load_tokens()
         self._load_last_push()
-
-    def _load_chatid(self):
-        try:
-            with open(self.chatid_path, encoding="utf-8") as handle:
-                return handle.read().strip()
-        except OSError:
-            return ""
-
-    def _save_chatid(self):
-        os.makedirs(self.state_dir, exist_ok=True)
-        with open(self.chatid_path, "w", encoding="utf-8") as handle:
-            handle.write(self._last_chatid + "\n")
 
     def _load_tokens(self):
         try:
@@ -374,15 +359,13 @@ class Relay:
             except json.JSONDecodeError:
                 continue
             thread_id = entry.get("thread") or ""
+            target = entry.get("chatid") or ""
             preview = " ".join((entry.get("preview") or "").split())[:120]
-            if not thread_id:
+            if not thread_id or not target:
+                self.log.warning("outbox entry skipped: missing thread or chatid")
                 continue
             token = self._new_token(thread_id)
             content = f"**Codex 完成**\n\n{preview}\n\n回复本条消息继续：`r#{token}`"
-            target = self.push_chatid or self._last_chatid
-            if not target:
-                self.log.warning("outbox skipped: no chatid configured and none seen yet")
-                continue
             await self._send(
                 ws,
                 "aibot_send_msg",
@@ -413,10 +396,6 @@ class Relay:
         text = (body.get("text") or {}).get("content", "")
         quote = body.get("quote") or {}
         quoted = (quote.get("text") or {}).get("content", "")
-        userid = (body.get("from") or {}).get("userid")
-        if userid and userid != self._last_chatid:
-            self._last_chatid = userid
-            self._save_chatid()
         match = TOKEN_RE.search(quoted) or TOKEN_RE.search(text)
         if match:
             return match.group(1), re.sub(r"^\s*@\S+\s*", "", text)
@@ -598,7 +577,7 @@ def main(argv=None):
     parser.add_argument(
         "--config",
         default=os.environ.get("WECHAT_WORK_CONFIG") or default_config,
-        help="JSON file with bot_id, secret and optional chatid",
+        help="JSON file with bot_id and secret",
     )
     parser.add_argument("--ws-url", default=WSS_URL)
     parser.add_argument(
