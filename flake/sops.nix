@@ -23,7 +23,7 @@ in {
     };
 
     text = {
-      serverchan-file = common-dir + "/serverchan.json";
+      routes-file = common-dir + "/routes.json";
       twofa-file = trusted-dir + "/2fa.json";
       public-ips-file = common-dir + "/public-ips.json";
     };
