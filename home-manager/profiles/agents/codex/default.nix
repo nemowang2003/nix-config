@@ -1,5 +1,4 @@
 {
-  self,
   config,
   pkgs,
   lib,
@@ -39,14 +38,12 @@
     tool_timeout_sec = 120;
   };
 in {
-  my.env-secrets.DEEPSEEK_API_KEY.group = "common";
-
   # ServerChan³ send endpoints for codex-notify: a map of profile name to the
   # bare push URL. `me` is the default recipient; other names are selectable
   # per thread with `codex-notify route <thread-id> <name>`.
-  sops.secrets."text/serverchan" = {
-    sopsFile = self.sops.text.serverchan-file;
-    key = "";
+  my.secrets.files.serverchan = {
+    scope = "common";
+    file = "serverchan.json";
     format = "json";
     path = "${config.xdg.configHome}/codex-notify/urls.json";
     mode = "0600";

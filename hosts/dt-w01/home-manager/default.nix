@@ -1,8 +1,4 @@
-{
-  lib,
-  config,
-  ...
-}: {
+{lib, ...}: {
   home.stateVersion = "25.11";
 
   my.codex.contexts = lib.mkAfter [
@@ -15,11 +11,4 @@
       里的交互式装饰会自动跳过）。
     ''
   ];
-
-  # systemd-format environment file for the NixOS-side codex-app-server
-  # service. The shared env/secrets.env uses shell `export` syntax, which
-  # systemd's EnvironmentFile cannot parse.
-  sops.templates."env/codex-app-server.env".content = ''
-    DEEPSEEK_API_KEY=${config.sops.placeholder."env/common/DEEPSEEK_API_KEY"}
-  '';
 }

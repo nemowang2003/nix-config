@@ -7,7 +7,9 @@
   uv = lib.getExe pkgs.uv;
   codex = lib.getExe pkgs.llm-agents.codex;
   user-home = "/home/${cfg.user}";
-  codex-env-file = "${user-home}/.config/sops-nix/secrets/rendered/env/codex-app-server.env";
+  # Materialized wholesale by home-manager's secrets module from
+  # secrets/common/env; KEY=VALUE data is natively parsable by systemd.
+  codex-env-file = "${user-home}/.config/sops-nix/env/common";
 in {
   systemd = {
     services.codex-app-server = {

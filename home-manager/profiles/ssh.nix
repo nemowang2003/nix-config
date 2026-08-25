@@ -12,7 +12,7 @@
     value = {
       sopsFile = self.sops.text.public-ips-file;
       key = hostname;
-      format = "yaml";
+      format = "json";
     };
   };
   mk-public-block = hostname: cfg: let

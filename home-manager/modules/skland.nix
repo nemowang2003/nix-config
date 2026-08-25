@@ -101,7 +101,7 @@ in {
     ];
 
     # TODO: assert that this module is only enabled on Linux with a user systemd manager.
-    # TODO: declare my.env-secrets entries for cfg.accounts.
+    # TODO: document which env secrets the auto-sign reads; secrets/<scope>/env is exported wholesale.
     # TODO: render a read-only seed credentials file from sops-managed secrets.
     # TODO: create cfg.state-dir and merge seed credentials into cfg.credential-file before each run.
     # TODO: define systemd.user.services.skland-auto-sign as a oneshot user service.

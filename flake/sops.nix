@@ -3,7 +3,9 @@
   lib,
   ...
 }: let
-  env-dir = ../secrets/env;
+  common-dir = ../secrets/common;
+  trusted-dir = ../secrets/trusted;
+  hosts-dir = ../secrets/hosts;
   host-recipients =
     lib.mapAttrs
     (_: cfg: cfg.age-recipient)
@@ -14,29 +16,35 @@
     (lib.filterAttrs (_: cfg: cfg.trusted && cfg.age-recipient != null) self.hosts);
 in {
   flake.sops = {
+    dirs = {
+      common = common-dir;
+      trusted = trusted-dir;
+      host = hostname: hosts-dir + "/${hostname}";
+    };
+
     text = {
-      serverchan-file = ../secrets/text/serverchan.json;
-      twofa-file = ../secrets/text/2fa.yaml;
-      public-ips-file = ../secrets/text/public-ips.yaml;
+      serverchan-file = common-dir + "/serverchan.json";
+      twofa-file = trusted-dir + "/2fa.json";
+      public-ips-file = common-dir + "/public-ips.json";
     };
 
     env = {
-      common-file = env-dir + "/common.yaml";
-      trusted-file = env-dir + "/trusted.yaml";
-      host-file = hostname: env-dir + "/hosts/${hostname}.yaml";
+      common-file = common-dir + "/.env";
+      trusted-file = trusted-dir + "/.env";
+      host-file = hostname: hosts-dir + "/${hostname}/.env";
       files-for-host = hostname: let
         cfg = self.hosts.${hostname};
       in
         builtins.filter builtins.pathExists
         (
           lib.optionals (cfg.age-recipient != null) [
-            (env-dir + "/common.yaml")
+            (common-dir + "/.env")
           ]
           ++ lib.optionals (cfg.trusted && cfg.age-recipient != null) [
-            (env-dir + "/trusted.yaml")
+            (trusted-dir + "/.env")
           ]
           ++ [
-            (env-dir + "/hosts/${hostname}.yaml")
+            (hosts-dir + "/${hostname}/.env")
           ]
         );
     };
@@ -45,7 +53,7 @@ in {
       creation_rules =
         [
           {
-            path_regex = "secrets/text/serverchan\\.json$";
+            path_regex = "secrets/common/.*$";
             key_groups = [
               {
                 age = lib.attrValues host-recipients;
@@ -53,31 +61,7 @@ in {
             ];
           }
           {
-            path_regex = "secrets/text/2fa\\.yaml$";
-            key_groups = [
-              {
-                age = lib.attrValues trusted-recipients;
-              }
-            ];
-          }
-          {
-            path_regex = "secrets/text/public-ips\\.yaml$";
-            key_groups = [
-              {
-                age = lib.attrValues host-recipients;
-              }
-            ];
-          }
-          {
-            path_regex = "secrets/env/common\\.yaml$";
-            key_groups = [
-              {
-                age = lib.attrValues host-recipients;
-              }
-            ];
-          }
-          {
-            path_regex = "secrets/env/trusted\\.yaml$";
+            path_regex = "secrets/trusted/.*$";
             key_groups = [
               {
                 age = lib.attrValues trusted-recipients;
@@ -87,7 +71,7 @@ in {
         ]
         ++ lib.mapAttrsToList
         (hostname: recipient: {
-          path_regex = "secrets/env/hosts/${hostname}\\.yaml$";
+          path_regex = "secrets/hosts/${hostname}/.*$";
           key_groups = [
             {
               age = [recipient];

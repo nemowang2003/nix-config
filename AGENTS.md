@@ -13,7 +13,7 @@ This repository is a Nix flake for personal machine configuration across macOS, 
 - `home-manager/modules/` declares private Home Manager options and shared glue, such as `my.*`.
 - `home-manager/profiles/` contains concrete program, language, and secret profiles.
 - `hosts/<hostname>/{darwin,nixos,generic,home-manager}/default.nix` contains per-host overrides.
-- `secrets/env/` stores sops-managed encrypted environment secrets.
+- `secrets/{common,trusted,hosts}/` stores sops-managed encrypted secrets, grouped by access scope.
 - `lib/` contains shared helper functions.
 
 ## Build, Test, and Development Commands
@@ -27,7 +27,7 @@ Use the devshell via direnv or `nix develop`.
 - `check-eval`: evaluate flake outputs for all hosts declared in `.#hosts`.
 - `check-activation`: dry-run Home Manager activation packages for all hosts declared in `.#hosts`.
 - `gh-keysync`: publish declared SSH public keys to GitHub.
-- `sops <path>`: edit encrypted secrets in-place (e.g. `sops secrets/text/2fa.yaml`);
+- `sops <path>`: edit encrypted secrets in-place (e.g. `sops secrets/trusted/2fa.json`);
   the devshell startup hook keeps `.sops.yaml` in sync so recipients are picked
   from each path's creation rule.
 
@@ -44,7 +44,7 @@ Write Nix with two-space indentation and prefer small, composable modules. Attri
 
 Prefer kebab-case for local Nix variable and helper-function names as well (`agent-languages`, `codex-notify`). Short, conventional helpers such as `isDarwin`, `mkHost`, and upstream library functions like `mkOption` may remain camelCase; do not rename upstream option attributes or framework-provided arguments.
 
-Use `my.*` for private cross-module metadata that is not part of Home Manager's upstream option namespace. Current private registries include `my.lsp.servers` for reusable LSP server commands, `my.languages` for language-level LSP and formatter declarations, `my.codex` for mutable Codex configuration, `my.skland` for Skland auto-sign wiring, and `my.env-secrets` for environment secrets materialized by the shared sops profile.
+Use `my.*` for private cross-module metadata that is not part of Home Manager's upstream option namespace. Current private registries include `my.lsp.servers` for reusable LSP server commands, `my.languages` for language-level LSP and formatter declarations, `my.codex` for mutable Codex configuration, `my.skland` for Skland auto-sign wiring, and `my.secrets` (files, twofa) for sops-backed secret materialization; environment variables are exported wholesale from `secrets/{common,trusted,hosts}/env`.
 
 Format Nix files with Alejandra:
 
