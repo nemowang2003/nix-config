@@ -3,6 +3,7 @@
   config,
   pkgs,
   lib,
+  cfg,
   ...
 }: let
   codex-notify = pkgs.nemowang2003.codex-notify;
@@ -49,26 +50,32 @@
     tool_timeout_sec = 120;
   };
 in {
-  # ServerChan³ send endpoints for codex-notify: a map of profile name to the
-  # bare push URL. `me` is the default recipient; other names are selectable
-  # per thread with `codex-notify route <thread-id> <name>`.
-  my.secrets.files.serverchan = {
+  # Per-person notification routes for codex-notify: a map of profile name to
+  # both the ServerChan³ push URL and the WeCom single-chat userid. One thread
+  # is bound to one profile with `codex-notify route <thread-id> <name>`;
+  # unrouted threads go to WangYiAn.
+  my.secrets.files.routes = {
     scope = "common";
-    file = "serverchan.json";
+    file = "routes.json";
     format = "json";
-    path = "${config.xdg.configHome}/codex-notify/urls.json";
+    path = "${config.xdg.configHome}/codex-notify/routes.json";
     mode = "0600";
   };
 
   # 企业微信智能机器人凭据 for codex-reply; declared only once the
   # encrypted file exists so hosts still evaluate before the secret is added.
-  my.secrets.files."wechat-work" = lib.mkIf (builtins.pathExists (self.sops.dirs.trusted + "/wechat-work.json")) {
-    scope = "trusted";
-    file = "wechat-work.json";
-    format = "json";
-    path = "${config.xdg.configHome}/codex-reply/wechat-work.json";
-    mode = "0600";
-  };
+  # Gated on cfg.trusted: non-trusted hosts cannot decrypt the file and must
+  # not fail activation trying to materialize it.
+  my.secrets.files."wechat-work" =
+    lib.mkIf (
+      cfg.trusted && builtins.pathExists (self.sops.dirs.trusted + "/wechat-work.json")
+    ) {
+      scope = "trusted";
+      file = "wechat-work.json";
+      format = "json";
+      path = "${config.xdg.configHome}/codex-reply/wechat-work.json";
+      mode = "0600";
+    };
 
   home.packages = [codex-notify];
 

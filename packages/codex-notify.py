@@ -14,7 +14,7 @@ Hook wiring lives in home-manager/profiles/agents/codex/default.nix:
 State is one JSON file per thread at
 $XDG_STATE_HOME/codex-notify/<sha256(thread)>.json with the fields `prompt`
 (epoch of the last UserPromptSubmit), `notify` (epoch of the last turn end)
-and `profile` (ServerChan URL name).
+and `profile` (route name).
 
 Codex has no thread-deletion hook (SessionEnd fires on every teardown with a
 constant reason), so the sqlite `threads` table is the source of truth: on
@@ -22,9 +22,12 @@ each hook invocation any state file whose thread no longer exists is pruned.
 No time-based expiry is used - a route for a dormant thread must survive as
 long as the conversation does.
 
-The URL map lives in $XDG_CONFIG_HOME/codex-notify/urls.json, materialized by
-sops-nix from secrets/text/serverchan.json. Only profile names are ever
-logged; the URLs themselves appear solely in the short-lived curl argv.
+The route map lives in $XDG_CONFIG_HOME/codex-notify/routes.json,
+materialized by sops-nix from secrets/common/routes.json. Each entry carries
+both the ServerChan push URL and the WeCom single-chat userid for one person;
+the WeCom half is handed to the codex-reply long-connection on dt-w01 through
+the outbox, which decides nothing on its own. Only profile names are ever
+logged; URLs and userids appear solely in short-lived argv or outbox lines.
 """
 
 import base64
@@ -43,7 +46,7 @@ import time
 CURL = "@curl@"
 FZF = "@fzf@"
 
-DEFAULT_PROFILE = "me"
+DEFAULT_PROFILE = "WangYiAn"
 DEFAULT_THRESHOLD = 300
 
 state_dir = os.path.join(
@@ -58,7 +61,7 @@ config_dir = os.path.join(
     os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
     "codex-notify",
 )
-urls_file = os.path.join(config_dir, "urls.json")
+routes_file = os.path.join(config_dir, "routes.json")
 reply_outbox = os.path.join(
     os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")),
     "codex-reply",
@@ -155,9 +158,9 @@ def cleanup_orphaned_state():
         pass
 
 
-def load_urls():
+def load_routes():
     try:
-        with open(urls_file) as handle:
+        with open(routes_file) as handle:
             data = json.load(handle)
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
@@ -198,12 +201,23 @@ def notify_local(title, content):
         pass
 
 
-def queue_wecom_push(thread_id, content):
-    """Ask the codex-reply relay to push a replyable WeCom notification."""
+def queue_wecom_push(thread_id, content, chatid):
+    """Ask the dt-w01 WeCom long-connection to push a replyable notification.
+
+    The chatid is resolved here from the thread's route; the transport on the
+    other end of the outbox only delivers, it never picks a target.
+    """
     try:
         os.makedirs(os.path.dirname(reply_outbox), exist_ok=True)
         preview = " ".join(content.split())[:120]
-        entry = json.dumps({"thread": thread_id, "preview": preview, "at": int(time.time())})
+        entry = json.dumps(
+            {
+                "thread": thread_id,
+                "preview": preview,
+                "chatid": chatid,
+                "at": int(time.time()),
+            }
+        )
         with open(reply_outbox, "a", encoding="utf-8") as handle:
             handle.write(entry + "\n")
     except OSError:
@@ -283,8 +297,8 @@ def cmd_route(args):
     if name and not re.fullmatch(r"[A-Za-z0-9_]+", name):
         print("route name must match [A-Za-z0-9_]+", file=sys.stderr)
         return 1
-    if name and name not in load_urls():
-        print(f"unknown url profile: {name}", file=sys.stderr)
+    if name and name not in load_routes():
+        print(f"unknown route profile: {name}", file=sys.stderr)
         return 1
     state = load_state(thread_id)
     if name:
@@ -315,11 +329,11 @@ def cmd_pick():
     if not selection:
         return 0
     thread_id = selection.split(" ", 1)[0]
-    names = sorted(load_urls(), key=lambda name: (name != DEFAULT_PROFILE, name))
+    names = sorted(load_routes(), key=lambda name: (name != DEFAULT_PROFILE, name))
     if not names:
-        print("urls.json has no profiles", file=sys.stderr)
+        print("routes.json has no profiles", file=sys.stderr)
         return 1
-    profile = fzf_select("url> ", "\n".join(names))
+    profile = fzf_select("route> ", "\n".join(names))
     if not profile:
         return 0
     return cmd_route(["route", thread_id, profile])
@@ -373,7 +387,9 @@ def cmd_notify(args):
         log(f"notify turn=goal thread={thread_id} no-prompt")
 
     profile = state.get("profile") or DEFAULT_PROFILE
-    url = load_urls().get(profile) or ""
+    route = load_routes().get(profile) or {}
+    url = route.get("serverchan") or ""
+    chatid = route.get("wecom") or ""
     if is_goal:
         log(f"notify serverchan mode=goal unconditional=yes route={profile}")
         if not url:
@@ -394,7 +410,10 @@ def cmd_notify(args):
         log(f"notify serverchan skip duration={duration} threshold={threshold}")
 
     if is_goal or duration >= threshold:
-        queue_wecom_push(thread_id, content)
+        if chatid:
+            queue_wecom_push(thread_id, content, chatid)
+        else:
+            log(f"notify wecom skip: route {profile} has no wecom userid")
 
     state["notify"] = int(now)
     save_state(thread_id, state)
