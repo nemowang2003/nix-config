@@ -6,6 +6,16 @@
   ...
 }: let
   codex-notify = pkgs.nemowang2003.codex-notify;
+  # Only the multitool `codex` binary belongs on PATH; the package also ships
+  # codex-code-mode-host and logs_client, which are never invoked by name.
+  codex-package = pkgs.symlinkJoin {
+    name = "codex";
+    paths = [pkgs.llm-agents.codex];
+    postBuild = ''
+      rm -f "$out/bin/codex-code-mode-host" "$out/bin/logs_client"
+    '';
+    inherit (pkgs.llm-agents.codex) version;
+  };
   codex-notify-min-duration = "300";
   agent-languages =
     lib.filterAttrs
@@ -60,6 +70,8 @@ in {
     mode = "0600";
   };
 
+  home.packages = [codex-notify];
+
   home.shellAliases."codex-list-sessions" = ''
     ${lib.getExe pkgs.sqlite} -readonly -header -column "${config.home.homeDirectory}/.codex/state_5.sqlite" \
       "SELECT id, cwd, title FROM threads ORDER BY updated_at DESC;" | $EDITOR
@@ -68,7 +80,7 @@ in {
   my.codex = {
     enable = true;
     enableMcpIntegration = true;
-    package = pkgs.llm-agents.codex;
+    package = codex-package;
     contexts = [./AGENTS.md];
     settings = {
       model = "deepseek-v4-pro";
