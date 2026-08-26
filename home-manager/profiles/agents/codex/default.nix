@@ -90,17 +90,25 @@ in {
     package = codex-package;
     contexts = [./AGENTS.md];
     settings = {
-      model = "deepseek-v4-pro";
+      model = "deepseek-v4-pro-openai";
       model_provider = "deepseek";
       forced_login_method = "api";
       model_reasoning_effort = "max";
       model_catalog_json = ./deepseek-model.json;
 
-      model_providers.deepseek = {
-        name = "deepseek";
-        base_url = "https://api.deepseek.com/";
-        wire_api = "responses";
-        env_key = "DEEPSEEK_API_KEY";
+      model_providers = {
+        deepseek = {
+          name = "deepseek";
+          base_url = "http://10.198.20.38:3821";
+          wire_api = "responses";
+          env_key = "DEEPSEEK_API_KEY";
+        };
+        deepseek-official = {
+          name = "deepseek-official";
+          base_url = "https://api.deepseek.com/";
+          wire_api = "responses";
+          env_key = "DEEPSEEK_API_KEY";
+        };
       };
 
       otel.metrics_exporter = "none";
