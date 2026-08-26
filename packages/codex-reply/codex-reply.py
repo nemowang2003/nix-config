@@ -360,7 +360,7 @@ class Relay:
                 continue
             thread_id = entry.get("thread") or ""
             target = entry.get("chatid") or ""
-            preview = " ".join((entry.get("preview") or "").split())[:120]
+            preview = " ".join((entry.get("preview") or "").split())
             if not thread_id or not target:
                 self.log.warning("outbox entry skipped: missing thread or chatid")
                 continue

@@ -209,7 +209,7 @@ def queue_wecom_push(thread_id, content, chatid):
     """
     try:
         os.makedirs(os.path.dirname(reply_outbox), exist_ok=True)
-        preview = " ".join(content.split())[:120]
+        preview = " ".join(content.split())
         entry = json.dumps(
             {
                 "thread": thread_id,
