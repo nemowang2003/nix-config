@@ -46,7 +46,7 @@ import time
 CURL = "@curl@"
 FZF = "@fzf@"
 
-DEFAULT_PROFILE = "WangYiAn"
+DEFAULT_PROFILE = "me"
 DEFAULT_THRESHOLD = 300
 
 state_dir = os.path.join(

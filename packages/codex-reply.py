@@ -23,7 +23,7 @@ Unix socket; a minimal client for it is embedded below so the only external
 dependency is the WeCom-facing `websockets` library.
 
 Credentials (bot_id, secret) live in
-$XDG_CONFIG_HOME/codex-reply/wechat-work.json, materialized by sops-nix. Logs
+$XDG_CONFIG_HOME/codex-reply/wecom.json, materialized by sops-nix. Logs
 go to stderr for journald; credentials, tokens and message content are never
 logged.
 """
@@ -572,11 +572,11 @@ def main(argv=None):
     default_config = os.path.join(
         os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
         "codex-reply",
-        "wechat-work.json",
+        "wecom.json",
     )
     parser.add_argument(
         "--config",
-        default=os.environ.get("WECHAT_WORK_CONFIG") or default_config,
+        default=os.environ.get("WECOM_CONFIG") or default_config,
         help="JSON file with bot_id and secret",
     )
     parser.add_argument("--ws-url", default=WSS_URL)

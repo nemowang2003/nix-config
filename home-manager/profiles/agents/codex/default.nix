@@ -53,7 +53,7 @@ in {
   # Per-person notification routes for codex-notify: a map of profile name to
   # both the ServerChan³ push URL and the WeCom single-chat userid. One thread
   # is bound to one profile with `codex-notify route <thread-id> <name>`;
-  # unrouted threads go to WangYiAn.
+  # unrouted threads go to `me`.
   my.secrets.files.routes = {
     scope = "common";
     file = "routes.json";
@@ -66,14 +66,14 @@ in {
   # encrypted file exists so hosts still evaluate before the secret is added.
   # Gated on cfg.trusted: non-trusted hosts cannot decrypt the file and must
   # not fail activation trying to materialize it.
-  my.secrets.files."wechat-work" =
+  my.secrets.files."wecom" =
     lib.mkIf (
-      cfg.trusted && builtins.pathExists (self.sops.dirs.trusted + "/wechat-work.json")
+      cfg.trusted && builtins.pathExists (self.sops.dirs.trusted + "/wecom.json")
     ) {
       scope = "trusted";
-      file = "wechat-work.json";
+      file = "wecom.json";
       format = "json";
-      path = "${config.xdg.configHome}/codex-reply/wechat-work.json";
+      path = "${config.xdg.configHome}/codex-reply/wecom.json";
       mode = "0600";
     };
 

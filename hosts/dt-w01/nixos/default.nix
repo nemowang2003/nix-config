@@ -10,7 +10,7 @@
   # Materialized wholesale by home-manager's secrets module from
   # secrets/common/env; KEY=VALUE data is natively parsable by systemd.
   codex-env-file = "${user-home}/.config/sops-nix/env/common";
-  wechat-work-config = "${user-home}/.config/codex-reply/wechat-work.json";
+  wecom-config = "${user-home}/.config/codex-reply/wecom.json";
 in {
   systemd = {
     services.codex-app-server = {
@@ -52,7 +52,7 @@ in {
           "XDG_CONFIG_HOME=${user-home}/.config"
           "XDG_STATE_HOME=${user-home}/.local/state"
         ];
-        ExecStart = "${codex-reply} --config ${wechat-work-config}";
+        ExecStart = "${codex-reply} --config ${wecom-config}";
         Restart = "on-failure";
         RestartSec = "5s";
         KillSignal = "SIGINT";
