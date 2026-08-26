@@ -6,7 +6,7 @@
   cfg,
   ...
 }: let
-  codex-notify = pkgs.nemowang2003.codex-notify;
+  codex-notify = self.packages.${pkgs.system}.codex-notify;
   # Only the multitool `codex` binary belongs on PATH; the package also ships
   # codex-code-mode-host and logs_client, which are never invoked by name.
   codex-package = pkgs.symlinkJoin {
