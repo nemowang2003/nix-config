@@ -6,7 +6,7 @@
   ...
 }: let
   codex = lib.getExe pkgs.llm-agents.codex;
-  codex-reply = lib.getExe self.packages.${pkgs.system}.codex-reply;
+  codex-reply = lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.codex-reply;
   user-home = "/home/${cfg.user}";
   # Materialized wholesale by home-manager's secrets module from
   # secrets/common/env; KEY=VALUE data is natively parsable by systemd.
