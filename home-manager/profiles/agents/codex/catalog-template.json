@@ -1,5 +1,4 @@
 {
- "prefer_websockets": false,
  "support_verbosity": true,
  "default_verbosity": "low",
  "apply_patch_tool_type": "freeform",

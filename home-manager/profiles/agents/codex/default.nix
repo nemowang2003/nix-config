@@ -206,13 +206,12 @@
   # block is needed; other gateways would be siblings of this attrset.
   tca-settings = {
     model = "deepseek-v4-pro-openai";
-    # Selector for the built-in provider, not a provider definition: every
-    # gateway is reached through `openai` + openai_base_url. It has to be
-    # written explicitly because the mutable config merge never drops keys, so
-    # a stale `model_provider` from an older generation would otherwise win.
-    model_provider = "openai";
+    # Selector for the named provider defined in `model_providers.tca` below.
+    # Named providers default to `supports_websockets = false` and
+    # `requires_openai_auth = false`, so requests go straight to HTTPS and the
+    # key comes from the TCA_API_KEY environment variable.
+    model_provider = "tca";
     model_reasoning_effort = "max";
-    openai_base_url = "http://10.198.20.38:3821/v1";
     model_catalog_json = codex-catalog;
   };
   agent-languages =
@@ -289,6 +288,13 @@ in {
     settings =
       tca-settings
       // {
+        model_providers.tca = {
+          name = "tca";
+          base_url = "http://10.198.20.38:3821";
+          wire_api = "responses";
+          env_key = "TCA_API_KEY";
+        };
+
         otel.metrics_exporter = "none";
 
         approval_policy = "never";
