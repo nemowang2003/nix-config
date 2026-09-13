@@ -43,7 +43,12 @@
 
     helix.url = "github:helix-editor/helix";
 
-    llm-agents.url = "github:numtide/llm-agents.nix";
+    # Pinned to codex 0.149, the last version this config was used with daily:
+    # newer releases feel slower on startup, `resume --last` and EOF exit
+    # (open issues openai/codex #14223, #22411) and add nothing this config
+    # needs. The startup draft itself is not the change point - it has existed
+    # since 0.148 - but 0.149 is the last known-good revision.
+    llm-agents.url = "github:numtide/llm-agents.nix/ac43040c34cd7853a8a1711513d0b1f688b5f217";
 
     # dependencies
     flake-utils.url = "github:numtide/flake-utils";
