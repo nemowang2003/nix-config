@@ -24,163 +24,7 @@
   # new Codex release changes the prompt scaffolding.
   catalog-template = builtins.fromJSON (builtins.readFile ./catalog-template.json);
 
-  reasoning-levels = [
-    {
-      effort = "low";
-      description = "Fast responses with lighter reasoning";
-    }
-    {
-      effort = "high";
-      description = "Extra high reasoning depth for complex problems";
-    }
-    {
-      effort = "max";
-      description = "Maximum reasoning depth for the hardest problems";
-    }
-  ];
-
-  # Models served by the TCA LiteLLM gateway, listed under their OpenAI-protocol
-  # names (the bare names are the Anthropic-protocol routes). List them with
-  # `curl -H "Authorization: Bearer $TCA_KEY" $GW/v1/models` and read per-model
-  # metadata from `$GW/model/info`. Context windows that the gateway does not
-  # report are filled from the vendors' published specs.
-  gateway-models = [
-    {
-      slug = "deepseek-v4-pro-openai";
-      name = "DeepSeek-V4-Pro";
-      description = "Frontier reasoning model served by the TCA gateway.";
-      context = 1048576;
-      effort = "max";
-      priority = 1;
-      vision = false;
-    }
-    {
-      slug = "glm-5.3-openai";
-      name = "GLM-5.3";
-      description = "Zhipu flagship with a 1M-token context window.";
-      context = 1048576;
-      effort = "max";
-      priority = 2;
-      vision = false;
-    }
-    {
-      slug = "kimi-k3-openai";
-      name = "Kimi-K3";
-      description = "Moonshot K3: 1M context with native vision.";
-      context = 1048576;
-      effort = "max";
-      priority = 3;
-      vision = true;
-    }
-    {
-      slug = "qwen3.8-max-openai";
-      name = "Qwen3.8-Max";
-      description = "Alibaba flagship, multimodal.";
-      context = 1000000;
-      effort = "max";
-      priority = 4;
-      vision = true;
-    }
-    {
-      slug = "qwen3.7-max-openai";
-      name = "Qwen3.7-Max";
-      description = "Alibaba Max tier, text only.";
-      context = 1000000;
-      effort = "high";
-      priority = 5;
-      vision = false;
-    }
-    {
-      slug = "doubao-seed-2-0-pro-openai";
-      name = "Doubao-Seed-2.0-Pro";
-      description = "ByteDance Seed 2.0 Pro, multimodal.";
-      context = 256000;
-      effort = "high";
-      priority = 6;
-      vision = true;
-    }
-    {
-      slug = "glm-5.2-openai";
-      name = "GLM-5.2";
-      description = "Zhipu GLM-5.2, 1M-token context window.";
-      context = 1048576;
-      effort = "high";
-      priority = 7;
-      vision = false;
-    }
-    {
-      slug = "kimi-k2.7-code-openai";
-      name = "Kimi-K2.7-Code";
-      description = "Moonshot coding-specialised model.";
-      context = 262144;
-      effort = "high";
-      priority = 8;
-      vision = false;
-    }
-    {
-      slug = "qwen3.7-plus-openai";
-      name = "Qwen3.7-Plus";
-      description = "Alibaba Plus tier.";
-      context = 1000000;
-      effort = "high";
-      priority = 9;
-      vision = false;
-    }
-    {
-      slug = "qwen3.6-plus-openai";
-      name = "Qwen3.6-Plus";
-      description = "Alibaba Plus tier, previous generation.";
-      context = 1000000;
-      effort = "high";
-      priority = 10;
-      vision = false;
-    }
-    {
-      slug = "deepseek-v4-flash-openai";
-      name = "DeepSeek-V4-Flash";
-      description = "Faster DeepSeek V4 tier.";
-      context = 1048576;
-      effort = "high";
-      priority = 11;
-      vision = false;
-    }
-    {
-      slug = "deepseek-v4.1-flash-openai";
-      name = "DeepSeek-V4.1-Flash";
-      description = "Trial route whose upstream label expires on 2026-09-10.";
-      context = 1048576;
-      effort = "high";
-      priority = 12;
-      vision = false;
-    }
-    {
-      slug = "kimi-k3-extra-openai";
-      name = "Kimi-K3 (extra)";
-      description = "Kimi K3 through the Moonshot direct channel.";
-      context = 1048576;
-      effort = "high";
-      priority = 13;
-      vision = true;
-    }
-    {
-      slug = "deepseek-v4-flash-local-openai";
-      name = "DeepSeek-V4-Flash (local)";
-      description = "Self-hosted DeepSeek V4 Flash served through the gateway.";
-      context = 1048576;
-      effort = "high";
-      priority = 14;
-      vision = false;
-    }
-    {
-      slug = "glm-4.6v-openai";
-      name = "GLM-4.6V";
-      description = "Zhipu vision model, self-hosted.";
-      context = 131072;
-      effort = "low";
-      priority = 15;
-      vision = true;
-    }
-  ];
+  models-lib = self.lib.models;
 
   codex-catalog = pkgs.writeText "codex-tca-models.json" (builtins.toJSON {
     models =
@@ -188,24 +32,23 @@
       (model:
         catalog-template
         // {
-          slug = model.slug;
+          slug = models-lib.openai-slug model.id;
           display_name = model.name;
           description = model.description;
           context_window = model.context;
           max_context_window = model.context;
           default_reasoning_level = model.effort;
-          supported_reasoning_levels = reasoning-levels;
+          supported_reasoning_levels = models-lib.reasoning-levels;
           priority = model.priority;
           input_modalities = ["text"] ++ lib.optional model.vision "image";
         })
-      gateway-models;
+      models-lib.models;
   });
 
-  # Everything that selects the TCA gateway. All providers are expressed as the
-  # built-in `openai` provider plus `openai_base_url`, so no `model_providers`
-  # block is needed; other gateways would be siblings of this attrset.
+  # Everything that selects the TCA gateway; other gateways would be siblings
+  # of this attrset plus a `profiles.<name>` entry below.
   tca-settings = {
-    model = "deepseek-v4-pro-openai";
+    model = models-lib.openai-slug models-lib.default-model;
     # Selector for the named provider defined in `model_providers.tca` below.
     # Named providers default to `supports_websockets = false` and
     # `requires_openai_auth = false`, so requests go straight to HTTPS and the
@@ -289,10 +132,10 @@ in {
       tca-settings
       // {
         model_providers.tca = {
-          name = "tca";
-          base_url = "http://10.198.20.38:3821";
+          name = models-lib.providers.tca.name;
+          base_url = models-lib.providers.tca.base-url;
           wire_api = "responses";
-          env_key = "TCA_API_KEY";
+          env_key = models-lib.providers.tca.key-env;
         };
 
         otel.metrics_exporter = "none";
