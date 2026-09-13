@@ -125,23 +125,13 @@
       vision = false;
     }
     {
-      id = "deepseek-v4-flash";
-      name = "DeepSeek-V4-Flash";
-      description = "Faster DeepSeek V4 tier.";
+      id = "deepseek-flash";
+      name = "DeepSeek-Flash";
+      description = "Faster DeepSeek tier; upstream route without the V4 suffix.";
       context = 1048576;
       output = 384000;
       effort = "high";
       priority = 11;
-      vision = false;
-    }
-    {
-      id = "deepseek-v4.1-flash";
-      name = "DeepSeek-V4.1-Flash";
-      description = "Trial route whose upstream label expires on 2026-09-10.";
-      context = 1048576;
-      output = 384000;
-      effort = "high";
-      priority = 12;
       vision = false;
     }
     {
