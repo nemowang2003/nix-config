@@ -116,51 +116,20 @@ in {
       (lib.attrNames cfg.profiles)
     );
 
+    format =
+      if is-toml-config
+      then "toml"
+      else "yaml";
+
     mk-mutable-merge = {
       path,
       source,
     }:
-      lib.hm.dag.entryAfter ["writeBoundary"] ''
-        (
-          CONFIG_PATH=${lib.escapeShellArg path}
-          CONFIG_BACKUP="$CONFIG_PATH.$HOME_MANAGER_BACKUP_EXT"
-
-          OLD_JSON=$(mktemp)
-          NEW_JSON=$(mktemp)
-          MERGED_JSON=$(mktemp)
-          MERGED_CONFIG=$(mktemp)
-          trap 'rm -f "$OLD_JSON" "$NEW_JSON" "$MERGED_JSON" "$MERGED_CONFIG"' EXIT
-
-          $DRY_RUN_CMD mkdir -p "$(dirname "$CONFIG_PATH")"
-
-          if [ -f "$CONFIG_PATH" ]; then
-            ${json-from-config} < "$CONFIG_PATH" > "$OLD_JSON"
-          else
-            echo "{}" > "$OLD_JSON"
-          fi
-
-          ${json-from-config} < "${source}" > "$NEW_JSON"
-          ${jq} -s '.[0] * .[1]' "$OLD_JSON" "$NEW_JSON" > "$MERGED_JSON"
-          ${config-from-json} < "$MERGED_JSON" > "$MERGED_CONFIG"
-
-          if [ -f "$CONFIG_PATH" ]; then
-            $DRY_RUN_CMD cp -p "$CONFIG_PATH" "$CONFIG_BACKUP"
-          fi
-
-          $DRY_RUN_CMD install -m 644 "$MERGED_CONFIG" "$CONFIG_PATH"
-        )
-      '';
-
-    yj = lib.getExe pkgs.yj;
-    jq = lib.getExe pkgs.jq;
-    json-from-config =
-      if is-toml-config
-      then "${yj} -tj"
-      else "${yj} -yj";
-    config-from-json =
-      if is-toml-config
-      then "${yj} -jt"
-      else "${yj} -jy";
+      lib.hm.dag.entryAfter ["writeBoundary"] (
+        self.lib.mutable-config.mk-mutable-merge {
+          inherit pkgs format path source;
+        }
+      );
   in
     lib.mkIf cfg.enable {
       my.codex.context = lib.mkIf (context-chunks != []) (
