@@ -1,4 +1,4 @@
-{lib}: let
+{...}: let
   # Shared reasoning levels every gateway model supports. Client renderers
   # project these into their own dialect (codex's catalog, nothing on the
   # opencode side since effort is chosen at runtime).
@@ -182,7 +182,4 @@ in {
 
   # Gateway naming rule: the OpenAI-protocol route of model `id`.
   openai-slug = id: "${id}-openai";
-
-  # Default gateway model: the highest-priority entry in the ordered list.
-  default-model = (lib.lists.head models).id;
 }

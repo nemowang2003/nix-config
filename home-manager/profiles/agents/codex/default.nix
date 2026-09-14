@@ -39,18 +39,22 @@
   # only in $CODEX_HOME/tca.config.toml - never in the base config.toml, which
   # stays limited to client behaviour. Other gateways would be siblings of this
   # attrset plus a `profiles.<name>` entry below.
+  #
+  # `model` and `model_reasoning_effort` are deliberately absent: the TUI
+  # writes the selected model back to the profile file, and the mutable merge
+  # lets the declaration win key by key, so pinning them here would undo that
+  # choice on every activation. The gateway's models all come from the catalog
+  # below; pick one with the model picker or `/model`.
   tca-settings = {
     # The gateway is reached with TCA_API_KEY (see `model_providers.tca`
     # below), so never fall back to a ChatGPT login: the app-server runs
     # unattended and has no browser to complete one with.
     forced_login_method = "api";
-    model = models-lib.openai-slug models-lib.default-model;
     # Selector for the named provider defined in `model_providers.tca` below.
     # Named providers default to `supports_websockets = false` and
     # `requires_openai_auth = false`, so requests go straight to HTTPS and the
     # key comes from the TCA_API_KEY environment variable.
     model_provider = "tca";
-    model_reasoning_effort = "max";
     model_catalog_json = codex-catalog;
     model_providers.tca = {
       name = models-lib.providers.tca.name;
