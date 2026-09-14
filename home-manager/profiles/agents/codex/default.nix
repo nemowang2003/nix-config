@@ -40,6 +40,10 @@
   # stays limited to client behaviour. Other gateways would be siblings of this
   # attrset plus a `profiles.<name>` entry below.
   tca-settings = {
+    # The gateway is reached with TCA_API_KEY (see `model_providers.tca`
+    # below), so never fall back to a ChatGPT login: the app-server runs
+    # unattended and has no browser to complete one with.
+    forced_login_method = "api";
     model = models-lib.openai-slug models-lib.default-model;
     # Selector for the named provider defined in `model_providers.tca` below.
     # Named providers default to `supports_websockets = false` and
