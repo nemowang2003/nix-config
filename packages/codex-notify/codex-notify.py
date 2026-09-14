@@ -17,10 +17,11 @@ $XDG_STATE_HOME/codex-notify/<sha256(thread)>.json with the fields `prompt`
 and `profile` (route name).
 
 Codex has no thread-deletion hook (SessionEnd fires on every teardown with a
-constant reason), so the sqlite `threads` table is the source of truth: on
-each hook invocation any state file whose thread no longer exists is pruned.
-No time-based expiry is used - a route for a dormant thread must survive as
-long as the conversation does.
+constant reason), so the sqlite `threads` table is the source of truth.
+Pruning is deliberately NOT on the hot hook path; run `codex-notify cleanup`
+manually to remove state files whose thread no longer exists. No time-based
+expiry is used - a route for a dormant thread must survive as long as the
+conversation does.
 
 The route map lives in $XDG_CONFIG_HOME/codex-notify/routes.json,
 materialized by sops-nix from secrets/common/routes.json. Each entry carries
@@ -158,6 +159,12 @@ def cleanup_orphaned_state():
         pass
 
 
+def cmd_cleanup():
+    cleanup_orphaned_state()
+    log("cleanup done")
+    return 0
+
+
 def load_routes():
     try:
         with open(routes_file) as handle:
@@ -283,7 +290,6 @@ def cmd_prompt():
     state = load_state(thread_id)
     state["prompt"] = int(time.time())
     save_state(thread_id, state)
-    cleanup_orphaned_state()
     log(f"prompt session={thread_id} marker={key_for(thread_id)}")
     return 0
 
@@ -306,7 +312,6 @@ def cmd_route(args):
     else:
         state.pop("profile", None)
     save_state(thread_id, state)
-    cleanup_orphaned_state()
     log(f"route thread={thread_id} suffix={name}" if name else f"route thread={thread_id} cleared")
     return 0
 
@@ -417,13 +422,14 @@ def cmd_notify(args):
 
     state["notify"] = int(now)
     save_state(thread_id, state)
-    cleanup_orphaned_state()
     return 0
 
 
 def main(argv):
     command = argv[1] if len(argv) > 1 else ""
     try:
+        if command == "cleanup":
+            return cmd_cleanup()
         if command == "prompt":
             return cmd_prompt()
         if command == "route":
