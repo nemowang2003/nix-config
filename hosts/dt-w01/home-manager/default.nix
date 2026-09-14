@@ -1,9 +1,45 @@
 {
+  config,
   lib,
   pkgs,
   ...
-}: {
+}: let
+  codex = lib.getExe pkgs.llm-agents.codex;
+  user-home = config.home.homeDirectory;
+in {
   home.stateVersion = "25.11";
+
+  # User-wide rather than system-wide: the daemon owns ~/.codex (trust state,
+  # thread db) and exists to serve this user's TUI, so it can live under the
+  # user manager and be driven with `systemctl --user`. Linger is enabled in
+  # hosts/dt-w01/nixos/default.nix, so it still starts at boot.
+  systemd.user.services.codex-app-server = {
+    Unit = {
+      Description = "Codex app-server daemon shared by the TUI and the reply relay";
+    };
+    Service = {
+      Type = "simple";
+      WorkingDirectory = user-home;
+      # Materialized wholesale by home-manager's secrets module from
+      # secrets/common/env; KEY=VALUE data is natively parsable by systemd.
+      EnvironmentFile = "${config.xdg.configHome}/sops-nix/env/common";
+      Environment = [
+        "XDG_CACHE_HOME=${user-home}/.cache"
+        "XDG_CONFIG_HOME=${user-home}/.config"
+        "XDG_STATE_HOME=${user-home}/.local/state"
+      ];
+      ExecStartPre = "${lib.getExe' pkgs.coreutils "rm"} -f ${user-home}/.codex/app-server-control/app-server-control.sock";
+      ExecStart = "${codex} app-server --listen unix://";
+      Restart = "on-failure";
+      RestartSec = "2s";
+      KillSignal = "SIGINT";
+      TimeoutStopSec = "30s";
+      LimitNOFILE = "65536";
+    };
+    Install = {
+      WantedBy = ["default.target"];
+    };
+  };
 
   my.codex.contexts = lib.mkAfter [
     ''
