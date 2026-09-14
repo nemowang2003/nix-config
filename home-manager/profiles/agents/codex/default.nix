@@ -7,16 +7,6 @@
   ...
 }: let
   codex-notify = self.packages.${pkgs.stdenv.hostPlatform.system}.codex-notify;
-  # Only the multitool `codex` binary belongs on PATH; the package also ships
-  # codex-code-mode-host and logs_client, which are never invoked by name.
-  codex-package = pkgs.symlinkJoin {
-    name = "codex";
-    paths = [pkgs.llm-agents.codex];
-    postBuild = ''
-      rm -f "$out/bin/codex-code-mode-host" "$out/bin/logs_client"
-    '';
-    inherit (pkgs.llm-agents.codex) version;
-  };
   codex-notify-min-duration = "300";
   # One entry's worth of instruction boilerplate (base_instructions +
   # model_messages, ~37 kB), shared by every gateway model so the checked-in
@@ -45,8 +35,10 @@
       models-lib.models;
   });
 
-  # Everything that selects the TCA gateway; other gateways would be siblings
-  # of this attrset plus a `profiles.<name>` entry below.
+  # Everything that selects the TCA gateway lives in this profile and therefore
+  # only in $CODEX_HOME/tca.config.toml - never in the base config.toml, which
+  # stays limited to client behaviour. Other gateways would be siblings of this
+  # attrset plus a `profiles.<name>` entry below.
   tca-settings = {
     model = models-lib.openai-slug models-lib.default-model;
     # Selector for the named provider defined in `model_providers.tca` below.
@@ -56,6 +48,12 @@
     model_provider = "tca";
     model_reasoning_effort = "max";
     model_catalog_json = codex-catalog;
+    model_providers.tca = {
+      name = models-lib.providers.tca.name;
+      base_url = models-lib.providers.tca.base-url;
+      wire_api = "responses";
+      env_key = models-lib.providers.tca.key-env;
+    };
   };
   agent-languages =
     lib.filterAttrs
@@ -126,44 +124,34 @@ in {
   my.codex = {
     enable = true;
     enableMcpIntegration = true;
-    package = codex-package;
+    package = pkgs.llm-agents.codex;
     contexts = [./AGENTS.md];
-    settings =
-      tca-settings
-      // {
-        model_providers.tca = {
-          name = models-lib.providers.tca.name;
-          base_url = models-lib.providers.tca.base-url;
-          wire_api = "responses";
-          env_key = models-lib.providers.tca.key-env;
-        };
+    settings = {
+      otel.metrics_exporter = "none";
 
-        otel.metrics_exporter = "none";
+      approval_policy = "never";
+      sandbox_mode = "danger-full-access";
+      tui.status_line = [
+        "model-with-reasoning"
+        "current-dir"
+        "git-branch"
+        "pull-request-number"
+        "branch-changes"
+        "run-state"
+        "permissions"
+        "context-remaining"
+        "five-hour-limit"
+        "weekly-limit"
+      ];
+      mcp_servers =
+        lib.mapAttrs'
+        (name: server: lib.nameValuePair "${name}-lsp" (mk-lsp-mcp-server server))
+        lsp-servers;
+    };
 
-        approval_policy = "never";
-        sandbox_mode = "danger-full-access";
-        tui.status_line = [
-          "model-with-reasoning"
-          "current-dir"
-          "git-branch"
-          "pull-request-number"
-          "branch-changes"
-          "run-state"
-          "permissions"
-          "context-remaining"
-          "five-hour-limit"
-          "weekly-limit"
-        ];
-        mcp_servers =
-          lib.mapAttrs'
-          (name: server: lib.nameValuePair "${name}-lsp" (mk-lsp-mcp-server server))
-          lsp-servers;
-      };
-
-    # Provider profiles. `codex` without a profile already points at the TCA
-    # gateway (settings above); `codex -p tca` selects the same thing
-    # explicitly, and a second gateway becomes a sibling attrset plus one line
-    # here. Profiles are written to $CODEX_HOME/<name>.config.toml.
+    # Provider profiles: `codex -p tca` selects the gateway. The profile file
+    # $CODEX_HOME/tca.config.toml is mutable (see home-manager/modules/codex.nix);
+    # a second gateway becomes a sibling attrset plus one line here.
     profiles.tca = tca-settings;
 
     # codex-notify wiring. Turn completion is driven by the Stop hook (the
