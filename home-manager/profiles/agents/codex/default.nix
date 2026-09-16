@@ -1,12 +1,69 @@
 {
+  self,
   config,
   pkgs,
   lib,
-  self,
   cfg,
   ...
 }: let
   codex-notify = self.packages.${pkgs.stdenv.hostPlatform.system}.codex-notify;
+  # One entry's worth of instruction boilerplate (base_instructions +
+  # model_messages, ~37 kB), shared by every gateway model so the checked-in
+  # catalog stays small. Refresh it from `codex debug models --bundled` when a
+  # new Codex release changes the prompt scaffolding.
+  catalog-template = builtins.fromJSON (builtins.readFile ./catalog-template.json);
+
+  models-lib = self.lib.models;
+
+  codex-catalog = pkgs.writeText "codex-tca-models.json" (builtins.toJSON {
+    models =
+      map
+      (model:
+        catalog-template
+        // {
+          slug = models-lib.openai-slug model.id;
+          display_name = model.name;
+          description = model.description;
+          context_window = model.context;
+          max_context_window = model.context;
+          default_reasoning_level = model.effort;
+          supported_reasoning_levels = models-lib.reasoning-levels;
+          priority = model.priority;
+          input_modalities = ["text"] ++ lib.optional model.vision "image";
+        })
+      models-lib.models;
+  });
+
+  # Everything that selects the TCA gateway lives in this profile and therefore
+  # only in $CODEX_HOME/tca.config.toml - never in the base config.toml, which
+  # stays limited to client behaviour. Other gateways would be siblings of this
+  # attrset plus a `profiles.<name>` entry below.
+  #
+  # `model` and `model_reasoning_effort` are deliberately absent: the TUI
+  # writes the selected model back to the profile file, and the mutable merge
+  # lets the declaration win key by key, so pinning them here would undo that
+  # choice on every activation. The gateway's models all come from the catalog
+  # below; pick one with the model picker or `/model`.
+  tca-settings = {
+    # Selector for the named provider defined in `model_providers.tca` below.
+    model_provider = "tca";
+    model_catalog_json = codex-catalog;
+    model_providers.tca = {
+      name = models-lib.providers.tca.name;
+      base_url = models-lib.providers.tca.base-url;
+      wire_api = "responses";
+      requires_openai_auth = false;
+
+      # A provider-owned auth manager avoids loading or refreshing the global
+      # ChatGPT credentials in auth.json. Its token cache is process-local;
+      # refresh_interval_ms = 0 reruns printenv only after a 401 response.
+      auth = {
+        command = lib.getExe' pkgs.coreutils "printenv";
+        args = [models-lib.providers.tca.key-env];
+        refresh_interval_ms = 0;
+      };
+    };
+  };
   agent-languages =
     lib.filterAttrs
     (_: language: language.enable && language.agent.enable)
@@ -79,19 +136,6 @@ in {
     package = pkgs.llm-agents.codex;
     contexts = [./AGENTS.md];
     settings = {
-      model = "deepseek-v4-pro";
-      model_provider = "deepseek";
-      forced_login_method = "api";
-      model_reasoning_effort = "max";
-      model_catalog_json = ./deepseek-model.json;
-
-      model_providers.deepseek = {
-        name = "deepseek";
-        base_url = "https://api.deepseek.com/";
-        wire_api = "responses";
-        env_key = "DEEPSEEK_API_KEY";
-      };
-
       otel.metrics_exporter = "none";
 
       approval_policy = "never";
@@ -113,6 +157,11 @@ in {
         (name: server: lib.nameValuePair "${name}-lsp" (mk-lsp-mcp-server server))
         lsp-servers;
     };
+
+    # Provider profiles: `codex -p tca` selects the gateway. The profile file
+    # $CODEX_HOME/tca.config.toml is mutable (see home-manager/modules/codex.nix);
+    # a second gateway becomes a sibling attrset plus one line here.
+    profiles.tca = tca-settings;
 
     # codex-notify wiring. Turn completion is driven by the Stop hook (the
     # legacy `notify` config key is slated for removal); codex-notify always

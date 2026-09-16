@@ -14,7 +14,7 @@ This repository is a Nix flake for personal machine configuration across macOS, 
 - `home-manager/profiles/` contains concrete program, language, and secret profiles.
 - `hosts/<hostname>/{darwin,nixos,generic,home-manager}/default.nix` contains per-host overrides.
 - `secrets/{common,trusted,hosts}/` stores sops-managed encrypted secrets, grouped by access scope.
-- `lib/` contains shared helper functions.
+- `lib/` contains shared helper functions; `lib/models.nix` is the single source of model facts (identity, context/output limits, reasoning, vision) and provider endpoints consumed by the agent profiles. Client-specific defaults and prompt scaffolding live in each client's renderer, e.g. `home-manager/profiles/agents/codex/catalog-template.json`.
 
 ## Build, Test, and Development Commands
 

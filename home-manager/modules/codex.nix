@@ -96,16 +96,40 @@ in {
     has-config-source = lib.hasAttrByPath [config-target "source"] config.home.file;
     config-source = lib.getAttrFromPath [config-target "source"] config.home.file;
 
-    yj = lib.getExe pkgs.yj;
-    jq = lib.getExe pkgs.jq;
-    json-from-config =
+    # Codex writes to its profile files too, so they get the same mutable
+    # treatment as config.toml: Home Manager only builds the TOML, and the
+    # activation merge below installs it over whatever is on disk.
+    # Names come from the option rather than from `config.home.file`, because
+    # this module also defines entries there and reading the whole set back
+    # would recurse.
+    toml-format = pkgs.formats.toml {};
+    profile-files = builtins.listToAttrs (
+      map
+      (name: let
+        target = "${config-dir}/${name}.config.toml";
+      in
+        lib.nameValuePair name {
+          inherit target;
+          path = "${config.home.homeDirectory}/${target}";
+          source = toml-format.generate "codex-${name}-config" cfg.profiles.${name};
+        })
+      (lib.attrNames cfg.profiles)
+    );
+
+    format =
       if is-toml-config
-      then "${yj} -tj"
-      else "${yj} -yj";
-    config-from-json =
-      if is-toml-config
-      then "${yj} -jt"
-      else "${yj} -jy";
+      then "toml"
+      else "yaml";
+
+    mk-mutable-merge = {
+      path,
+      source,
+    }:
+      lib.hm.dag.entryAfter ["writeBoundary"] (
+        self.lib.mutable-config.mk-mutable-merge {
+          inherit pkgs format path source;
+        }
+      );
   in
     lib.mkIf cfg.enable {
       my.codex.context = lib.mkIf (context-chunks != []) (
@@ -122,40 +146,29 @@ in {
       # config.toml at runtime. See:
       # https://github.com/nix-community/home-manager/issues/9397
       home = {
-        file.${config-target}.enable = lib.mkForce false;
+        file =
+          {
+            ${config-target}.enable = lib.mkForce false;
+          }
+          // lib.mapAttrs'
+          (_: profile: lib.nameValuePair profile.target {enable = lib.mkForce false;})
+          profile-files;
 
-        activation.mutable-codex-config = lib.mkIf has-config-source (
-          lib.hm.dag.entryAfter ["writeBoundary"] ''
-            (
-              CONFIG_PATH=${lib.escapeShellArg config-path}
-              CONFIG_BACKUP="$CONFIG_PATH.$HOME_MANAGER_BACKUP_EXT"
-
-              OLD_JSON=$(mktemp)
-              NEW_JSON=$(mktemp)
-              MERGED_JSON=$(mktemp)
-              MERGED_CONFIG=$(mktemp)
-              trap 'rm -f "$OLD_JSON" "$NEW_JSON" "$MERGED_JSON" "$MERGED_CONFIG"' EXIT
-
-              $DRY_RUN_CMD mkdir -p "$(dirname "$CONFIG_PATH")"
-
-              if [ -f "$CONFIG_PATH" ]; then
-                ${json-from-config} < "$CONFIG_PATH" > "$OLD_JSON"
-              else
-                echo "{}" > "$OLD_JSON"
-              fi
-
-              ${json-from-config} < "${config-source}" > "$NEW_JSON"
-              ${jq} -s '.[0] * .[1]' "$OLD_JSON" "$NEW_JSON" > "$MERGED_JSON"
-              ${config-from-json} < "$MERGED_JSON" > "$MERGED_CONFIG"
-
-              if [ -f "$CONFIG_PATH" ]; then
-                $DRY_RUN_CMD cp -p "$CONFIG_PATH" "$CONFIG_BACKUP"
-              fi
-
-              $DRY_RUN_CMD install -m 644 "$MERGED_CONFIG" "$CONFIG_PATH"
-            )
-          ''
-        );
+        activation =
+          lib.mapAttrs'
+          (
+            name: profile:
+              lib.nameValuePair "mutable-codex-profile-${name}" (mk-mutable-merge {
+                inherit (profile) path source;
+              })
+          )
+          profile-files
+          // lib.optionalAttrs has-config-source {
+            mutable-codex-config = mk-mutable-merge {
+              path = config-path;
+              source = config-source;
+            };
+          };
       };
     };
 }
