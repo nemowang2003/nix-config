@@ -86,4 +86,37 @@ in {
       里的交互式装饰会自动跳过）。
     ''
   ];
+
+  # Runs as a *user* service so the interpreter and dependencies come from
+  # the home-manager profile; the system-level variant could not see
+  # ~/.nix-profile/bin. uv is still pinned to the store Python so PATH never
+  # matters.
+  systemd.user.services.skyland-auto-sign = {
+    Unit = {
+      Description = "Skyland Auto Sign Service";
+      After = ["network-online.target"];
+    };
+    Service = {
+      Type = "oneshot";
+      WorkingDirectory = "%h/skyland-auto-sign";
+      ExecStart = "${lib.getExe pkgs.uv} run --python ${lib.getExe pkgs.python314} src/main.py";
+    };
+    Install = {
+      WantedBy = ["default.target"];
+    };
+  };
+
+  systemd.user.timers.skyland-auto-sign = {
+    Unit = {
+      Description = "Run Skyland Auto Sign daily";
+    };
+    Timer = {
+      OnCalendar = "*-*-* 00:00:00";
+      Persistent = true;
+      Unit = "skyland-auto-sign.service";
+    };
+    Install = {
+      WantedBy = ["timers.target"];
+    };
+  };
 }
