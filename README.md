@@ -9,7 +9,7 @@ This flake manages a fleet of diverse machines (darwin, wsl, native nixos, and g
 - `hosts/`: Per-host specific configurations.
 - `nixos/`, `darwin/`, `generic/`, `home-manager/`: Shared modules and profiles.
 - `flake/`: Flake modules: host registry, configuration builders, devshell, and overlays.
-- `packages/`: Reusable executables (`notify`, `codex-notify`, `generic-rebuild`), exported as flake packages and injected into nixpkgs as `pkgs.nemowang2003`.
+- `packages/`: Reusable executables (`codex-notify`, `codex-wecom-relay`, `generic-rebuild`), exported as flake packages and injected into nixpkgs as `pkgs.nemowang2003`.
 - `lib/`: Shared helper functions.
 - `secrets/`: sops-encrypted environment secrets.
 

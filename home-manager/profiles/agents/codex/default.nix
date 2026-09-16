@@ -2,10 +2,11 @@
   config,
   pkgs,
   lib,
+  self,
+  cfg,
   ...
 }: let
   codex-notify = pkgs.nemowang2003.codex-notify;
-  codex-notify-min-duration = "300";
   agent-languages =
     lib.filterAttrs
     (_: language: language.enable && language.agent.enable)
@@ -38,16 +39,34 @@
     tool_timeout_sec = 120;
   };
 in {
-  # ServerChan³ send endpoints for codex-notify: a map of profile name to the
-  # bare push URL. `me` is the default recipient; other names are selectable
-  # per thread with `codex-notify route <thread-id> <name>`.
-  my.secrets.files.serverchan = {
+  # Per-person notification routes for codex-notify: a map of profile name to
+  # both the ServerChan³ push URL and the WeCom single-chat userid. One thread
+  # is bound to one profile with `codex-notify route <thread-id> <name>`;
+  # unrouted threads go to `me`.
+  my.secrets.files.routes = {
     scope = "common";
-    file = "serverchan.json";
+    file = "routes.json";
     format = "json";
-    path = "${config.xdg.configHome}/codex-notify/urls.json";
+    path = "${config.xdg.configHome}/codex-notify/routes.json";
     mode = "0600";
   };
+
+  # 企业微信智能机器人凭据 for codex-wecom-relay; declared only once the
+  # encrypted file exists so hosts still evaluate before the secret is added.
+  # Gated on cfg.trusted: non-trusted hosts cannot decrypt the file and must
+  # not fail activation trying to materialize it.
+  my.secrets.files."wecom" =
+    lib.mkIf (
+      cfg.trusted && builtins.pathExists (self.sops.dirs.trusted + "/wecom.json")
+    ) {
+      scope = "trusted";
+      file = "wecom.json";
+      format = "json";
+      path = "${config.xdg.configHome}/codex-wecom-relay/wecom.json";
+      mode = "0600";
+    };
+
+  home.packages = [codex-notify];
 
   home.shellAliases."codex-list-sessions" = ''
     ${lib.getExe pkgs.sqlite} -readonly -header -column "${config.home.homeDirectory}/.codex/state_5.sqlite" \
@@ -97,32 +116,17 @@ in {
 
     # codex-notify wiring. Turn completion is driven by the Stop hook (the
     # legacy `notify` config key is slated for removal); codex-notify always
-    # exits 0 so it never blocks a turn. UserPromptSubmit stamps the per-turn
-    # start, and /goal continuations bypass it - which is what lets
-    # codex-notify recognize goal checkpoints. No SessionEnd hook: it fires on
-    # every teardown with a constant reason, so stale state is instead GC'd by
-    # codex-notify's seven-day TTL.
+    # exits 0 so it never blocks a turn. No SessionEnd hook: it fires on every
+    # teardown with a constant reason; stale route state can be removed with
+    # `codex-notify cleanup`, using Codex's thread database as source of truth.
     hooks = {
-      UserPromptSubmit = [
-        {
-          matcher = ".*";
-          hooks = [
-            {
-              type = "command";
-              command = "${lib.getExe codex-notify} prompt";
-              timeout = 3;
-            }
-          ];
-        }
-      ];
-
       Stop = [
         {
           matcher = ".*";
           hooks = [
             {
               type = "command";
-              command = "${lib.getExe codex-notify} notify Codex ${codex-notify-min-duration}";
+              command = "${lib.getExe codex-notify} notify Codex";
               timeout = 3;
             }
           ];
