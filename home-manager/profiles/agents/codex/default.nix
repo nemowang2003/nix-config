@@ -6,7 +6,7 @@
   cfg,
   ...
 }: let
-  codex-notify = pkgs.nemowang2003.codex-notify;
+  codex-notify = self.packages.${pkgs.stdenv.hostPlatform.system}.codex-notify;
   agent-languages =
     lib.filterAttrs
     (_: language: language.enable && language.agent.enable)

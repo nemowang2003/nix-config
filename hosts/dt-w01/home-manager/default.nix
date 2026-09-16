@@ -2,10 +2,11 @@
   config,
   lib,
   pkgs,
+  self,
   ...
 }: let
   codex = lib.getExe pkgs.llm-agents.codex;
-  codex-wecom-relay = lib.getExe pkgs.nemowang2003.codex-wecom-relay;
+  codex-wecom-relay = lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.codex-wecom-relay;
   user-home = config.home.homeDirectory;
 in {
   home.stateVersion = "25.11";
