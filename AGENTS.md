@@ -44,7 +44,7 @@ Write Nix with two-space indentation and prefer small, composable modules. Attri
 
 Prefer kebab-case for local Nix variable and helper-function names as well (`agent-languages`, `codex-notify`). Short, conventional helpers such as `isDarwin`, `mkHost`, and upstream library functions like `mkOption` may remain camelCase; do not rename upstream option attributes or framework-provided arguments.
 
-Use `my.*` for private cross-module metadata that is not part of Home Manager's upstream option namespace. Current private registries include `my.lsp.servers` for reusable LSP server commands, `my.languages` for language-level LSP and formatter declarations, `my.codex` for mutable Codex configuration, `my.skland` for Skland auto-sign wiring, and `my.secrets` (files, twofa) for sops-backed secret materialization; environment variables are exported wholesale from `secrets/{common,trusted,hosts}/env`.
+Use `my.*` for private cross-module metadata that is not part of an upstream option namespace. Current private registries include `my.homebrew` for nix-homebrew integration, `my.lsp.servers` for reusable LSP server commands, `my.languages` for language-level LSP and formatter declarations, `my.codex` for mutable Codex configuration, `my.skland` for Skland auto-sign wiring, and `my.secrets` (files, twofa) for sops-backed secret materialization; environment variables are exported wholesale from `secrets/{common,trusted,hosts}/env`.
 
 Format Nix files with Alejandra:
 

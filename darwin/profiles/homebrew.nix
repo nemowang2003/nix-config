@@ -3,11 +3,12 @@
   cfg,
   ...
 }: {
-  nix-homebrew = {
+  my.homebrew = {
     enable = true;
     enableRosetta = cfg.arch == "aarch64-darwin";
     user = cfg.user;
     autoMigrate = true;
+    completions.enable = true;
 
     mutableTaps = false;
 
@@ -19,6 +20,8 @@
 
   homebrew = {
     enable = true;
+    # nix-homebrew.enableZshIntegration defaults to true; enabling this too
+    # would evaluate `brew shellenv` twice.
     enableZshIntegration = false;
 
     onActivation = {

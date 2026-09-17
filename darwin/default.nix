@@ -6,7 +6,9 @@
   cfg,
   ...
 }: {
-  imports = self.lib.collect-nix-files ./profiles;
+  imports =
+    self.lib.collect-nix-files ./modules
+    ++ self.lib.collect-nix-files ./profiles;
 
   config = lib.mkMerge [
     (self.build-nix-settings cfg)
