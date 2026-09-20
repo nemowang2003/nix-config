@@ -67,6 +67,12 @@ in {
           }
         '';
       };
+
+      profile-removed-paths = lib.mkOption {
+        type = lib.types.attrsOf (lib.types.listOf (lib.types.listOf lib.types.str));
+        default = {};
+        description = "Obsolete TOML paths removed from mutable Codex profile files during activation.";
+      };
     }
     // mirrored-codex-options;
 
@@ -124,10 +130,11 @@ in {
     mk-mutable-merge = {
       path,
       source,
+      removed-paths ? [],
     }:
       lib.hm.dag.entryAfter ["writeBoundary"] (
         self.lib.mutable-config.mk-mutable-merge {
-          inherit pkgs format path source;
+          inherit pkgs format path source removed-paths;
         }
       );
   in
@@ -140,7 +147,7 @@ in {
         {
           enable = true;
         }
-        // removeAttrs cfg ["enable" "custom-instructions" "contexts"];
+        // removeAttrs cfg ["enable" "custom-instructions" "contexts" "profile-removed-paths"];
 
       # Keep Codex config mutable because Codex writes trust/bookkeeping state to
       # config.toml at runtime. See:
@@ -160,6 +167,7 @@ in {
             name: profile:
               lib.nameValuePair "mutable-codex-profile-${name}" (mk-mutable-merge {
                 inherit (profile) path source;
+                removed-paths = cfg.profile-removed-paths.${name} or [];
               })
           )
           profile-files

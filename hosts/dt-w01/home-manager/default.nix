@@ -5,11 +5,26 @@
   self,
   ...
 }: let
-  codex = lib.getExe pkgs.llm-agents.codex;
-  codex-wecom-relay = lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.codex-wecom-relay;
   user-home = config.home.homeDirectory;
+  socket-dir = "${user-home}/.codex/app-server-control";
+  tca-socket = "${socket-dir}/tca.sock";
+
+  # `app-server` does not accept `-p`, so project the declarative TCA profile
+  # into ordinary `-c dotted.path=value` overrides for its dedicated daemon.
+  config-overrides = path: value:
+    if builtins.isAttrs value && !lib.isDerivation value
+    then lib.concatMap (name: config-overrides (path ++ [name]) value.${name}) (builtins.attrNames value)
+    else [
+      "${lib.concatStringsSep "." path}=${
+        if lib.isDerivation value
+        then builtins.toJSON "${value}"
+        else builtins.toJSON value
+      }"
+    ];
 in {
   home.stateVersion = "25.11";
+
+  home.shellAliases.codex-tca = "codex -p tca --remote unix://${tca-socket}";
 
   # Both daemons are user-wide rather than system-wide: they own ~/.codex
   # (trust state, thread db, control socket) and this user's state, and exist
@@ -32,8 +47,16 @@ in {
           "XDG_CONFIG_HOME=${user-home}/.config"
           "XDG_STATE_HOME=${user-home}/.local/state"
         ];
-        ExecStartPre = "${lib.getExe' pkgs.coreutils "rm"} -f ${user-home}/.codex/app-server-control/app-server-control.sock";
-        ExecStart = "${codex} app-server --listen unix://";
+        ExecStartPre = [
+          "${lib.getExe' pkgs.coreutils "mkdir"} -p ${socket-dir}"
+          "${lib.getExe' pkgs.coreutils "rm"} -f ${socket-dir}/app-server-control.sock"
+        ];
+        ExecStart = lib.escapeShellArgs [
+          (lib.getExe pkgs.llm-agents.codex)
+          "app-server"
+          "--listen"
+          "unix://"
+        ];
         Restart = "on-failure";
         RestartSec = "2s";
         KillSignal = "SIGINT";
@@ -43,6 +66,39 @@ in {
       Install = {
         WantedBy = ["default.target"];
       };
+    };
+
+    services.codex-tca-app-server = {
+      Unit.Description = "Codex TCA app-server daemon";
+      Service = {
+        Type = "simple";
+        WorkingDirectory = user-home;
+        EnvironmentFile = "${config.xdg.configHome}/sops-nix/env/common";
+        Environment = [
+          "XDG_CACHE_HOME=${user-home}/.cache"
+          "XDG_CONFIG_HOME=${user-home}/.config"
+          "XDG_STATE_HOME=${user-home}/.local/state"
+        ];
+        ExecStartPre = [
+          "${lib.getExe' pkgs.coreutils "mkdir"} -p ${socket-dir}"
+          "${lib.getExe' pkgs.coreutils "rm"} -f ${tca-socket}"
+        ];
+        ExecStart = lib.escapeShellArgs (
+          [
+            (lib.getExe pkgs.llm-agents.codex)
+            "app-server"
+            "--listen"
+            "unix://${tca-socket}"
+          ]
+          ++ lib.concatMap (override: ["-c" override]) (config-overrides [] config.my.codex.profiles.tca)
+        );
+        Restart = "on-failure";
+        RestartSec = "2s";
+        KillSignal = "SIGINT";
+        TimeoutStopSec = "30s";
+        LimitNOFILE = "65536";
+      };
+      Install.WantedBy = ["default.target"];
     };
 
     services.codex-wecom-relay = {
@@ -65,7 +121,13 @@ in {
         # Credentials materialized by home-manager's secrets module; the path
         # matches my.secrets.files."wecom" in
         # home-manager/profiles/agents/codex/default.nix.
-        ExecStart = "${codex-wecom-relay} --config ${config.xdg.configHome}/codex-wecom-relay/wecom.json";
+        ExecStart = lib.escapeShellArgs [
+          (lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.codex-wecom-relay)
+          "--config"
+          "${config.xdg.configHome}/codex-wecom-relay/wecom.json"
+          "--provider-socket"
+          "tca=${tca-socket}"
+        ];
         Restart = "on-failure";
         RestartSec = "5s";
         KillSignal = "SIGINT";

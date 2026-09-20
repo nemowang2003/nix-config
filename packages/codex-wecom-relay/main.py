@@ -143,6 +143,9 @@ class AppServer:
     def resume_thread(self, thread_id):
         return self.request("thread/resume", {"threadId": thread_id})
 
+    def read_thread(self, thread_id):
+        return self.request("thread/read", {"threadId": thread_id, "includeTurns": False})
+
     def start_turn(self, thread_id, text):
         return self.request(
             "turn/start",
@@ -195,7 +198,7 @@ def load_config(path):
 
 
 class Relay:
-    def __init__(self, config, ws_url, state_dir, log):
+    def __init__(self, config, ws_url, state_dir, log, provider_sockets=None):
         self.bot_id = config["bot_id"]
         self.secret = config["secret"]
         self.ws_url = ws_url
@@ -204,6 +207,7 @@ class Relay:
         self.tokens_path = os.path.join(state_dir, "tokens.json")
         self.last_push_path = os.path.join(state_dir, "last-push.json")
         self.log = log
+        self.provider_sockets = provider_sockets or {}
         self._seq = 0
         self._seen = deque(maxlen=1000)
         self._tokens = {}
@@ -374,9 +378,27 @@ class Relay:
         digest = hashlib.sha256(req_id.encode()).hexdigest()[:12]
         return f"s{digest}"
 
+    def _app_for_thread(self, thread_id):
+        if not self.provider_sockets:
+            return AppServer()
+        metadata = AppServer()
+        try:
+            metadata.connect()
+            metadata.initialize("codex-wecom-relay-router")
+            result = metadata.read_thread(thread_id) or {}
+            provider = (result.get("thread") or {}).get("modelProvider")
+        finally:
+            metadata.close()
+        return AppServer(self.provider_sockets.get(provider))
+
     async def _run_turn(self, ws, callback, thread_id, text):
         stream_id = self._stream_id(callback)
-        app = AppServer()
+        try:
+            app = await asyncio.to_thread(self._app_for_thread, thread_id)
+        except (AppServerError, ConnectionError, OSError) as exc:
+            self.log.warning("provider lookup failed thread=%s: %s", thread_id, exc)
+            await self._respond_markdown(ws, callback, f"Codex 注入失败：{exc}")
+            return
         parts = []
         last_flush = 0.0
         status = None
@@ -557,7 +579,19 @@ def main(argv=None):
         ),
     )
     parser.add_argument("--log-level", default="INFO")
+    parser.add_argument(
+        "--provider-socket",
+        action="append",
+        default=[],
+        metavar="PROVIDER=PATH",
+        help="route threads from PROVIDER to a dedicated app-server Unix socket",
+    )
     args = parser.parse_args(argv)
+
+    try:
+        provider_sockets = dict(item.split("=", 1) for item in args.provider_socket)
+    except ValueError:
+        parser.error("--provider-socket must be PROVIDER=PATH")
 
     logging.basicConfig(
         level=args.log_level,
@@ -575,7 +609,7 @@ def main(argv=None):
         log.error("cannot load config: %s", exc)
         return 1
 
-    relay = Relay(config, args.ws_url, args.state_dir, log)
+    relay = Relay(config, args.ws_url, args.state_dir, log, provider_sockets)
     try:
         return asyncio.run(relay.run())
     except KeyboardInterrupt:

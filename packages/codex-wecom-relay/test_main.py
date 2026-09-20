@@ -3,6 +3,7 @@ import json
 import logging
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 MODULE_PATH = Path(__file__).with_name("main.py")
@@ -62,6 +63,25 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
         relay = self.make_relay("/tmp/unused-codex-wecom-relay-test")
         callback = {"headers": {"req_id": "request-id"}}
         self.assertEqual(relay._stream_id(callback), relay._stream_id(callback))
+
+    def test_thread_provider_selects_dedicated_socket(self):
+        relay = relay_module.Relay(
+            {"bot_id": "bot", "secret": "secret"},
+            "wss://example.invalid",
+            "/tmp/unused-codex-wecom-relay-test",
+            logging.getLogger("test"),
+            {"tca": "/tmp/tca.sock"},
+        )
+
+        with patch.object(relay_module, "AppServer") as app_server:
+            metadata = app_server.return_value
+            metadata.read_thread.return_value = {"thread": {"modelProvider": "tca"}}
+
+            relay._app_for_thread("thread")
+
+            app_server.assert_any_call()
+            app_server.assert_called_with("/tmp/tca.sock")
+            metadata.close.assert_called_once_with()
 
 
 if __name__ == "__main__":

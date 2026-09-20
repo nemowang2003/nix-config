@@ -41,6 +41,7 @@ in {
     format,
     path,
     source,
+    removed-paths ? [],
   }: let
     codec =
       codecs.${format}
@@ -67,7 +68,9 @@ in {
       fi
 
       ${yj} ${codec.decode} < "${source}" > "$NEW_JSON"
-      ${jq} -s '.[0] * .[1]' "$OLD_JSON" "$NEW_JSON" > "$MERGED_JSON"
+      ${jq} -s --argjson removed '${builtins.toJSON removed-paths}' \
+        '.[0] * .[1] | delpaths($removed)' \
+        "$OLD_JSON" "$NEW_JSON" > "$MERGED_JSON"
       ${yj} ${codec.encode} < "$MERGED_JSON" > "$MERGED_CONFIG"
 
       if [ -f "$CONFIG_PATH" ]; then
