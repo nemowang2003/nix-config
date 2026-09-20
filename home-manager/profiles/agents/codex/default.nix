@@ -6,7 +6,9 @@
   cfg,
   ...
 }: let
+  codex-archive-backtrack = self.packages.${pkgs.stdenv.hostPlatform.system}.codex-archive-backtrack;
   codex-notify = self.packages.${pkgs.stdenv.hostPlatform.system}.codex-notify;
+  codex-package = pkgs.llm-agents.codex;
   # One entry's worth of instruction boilerplate (base_instructions +
   # model_messages, ~37 kB), shared by every gateway model so the checked-in
   # catalog stays small. Refresh it from `codex debug models --bundled` when a
@@ -123,7 +125,10 @@ in {
       mode = "0600";
     };
 
-  home.packages = [codex-notify];
+  home.packages = [
+    codex-archive-backtrack
+    codex-notify
+  ];
 
   home.shellAliases."codex-list-sessions" = ''
     ${lib.getExe pkgs.sqlite} -readonly -header -column "${config.home.homeDirectory}/.codex/state_5.sqlite" \
@@ -133,7 +138,7 @@ in {
   my.codex = {
     enable = true;
     enableMcpIntegration = true;
-    package = pkgs.llm-agents.codex;
+    package = codex-package;
     contexts = [./AGENTS.md];
     settings = {
       otel.metrics_exporter = "none";
@@ -169,6 +174,19 @@ in {
     # teardown with a constant reason; stale route state can be removed with
     # `codex-notify cleanup`, using Codex's thread database as source of truth.
     hooks = {
+      SessionStart = [
+        {
+          matcher = "^fork$";
+          hooks = [
+            {
+              type = "command";
+              command = "${lib.getExe codex-archive-backtrack} --codex ${lib.getExe codex-package}";
+              timeout = 15;
+              async = true;
+            }
+          ];
+        }
+      ];
       Stop = [
         {
           matcher = ".*";
