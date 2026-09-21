@@ -24,7 +24,7 @@ Use the devshell via direnv or `nix develop`.
 - `rebuild`: run the host system activation, then `hms`; on generic Linux it installs the system Nix configuration first.
 - `nix run .#generic-rebuild [build|switch] [--flake <flake>]`: build or activate the current host's `genericConfigurations.<host>.config.system.build.activationPackage`; it resolves the host from `hostname -s`, and `switch` must run as root (the `rebuild` devshell command calls it on generic Linux).
 - `update`: run `nix flake update`, then `rebuild`.
-- `check-eval`: evaluate flake outputs for all hosts declared in `.#hosts`.
+- `nix flake check`: run the current system's Python package tests and evaluate configurations for all hosts declared in `.#hosts`.
 - `check-activation`: dry-run Home Manager activation packages for all hosts declared in `.#hosts`.
 - `gh-keysync`: publish declared SSH public keys to GitHub.
 - `sops <path>`: edit encrypted secrets in-place (e.g. `sops secrets/trusted/2fa.json`);
@@ -56,10 +56,10 @@ The flake formatter is Alejandra, so `nix fmt` is equivalent to formatting the r
 
 ## Testing Guidelines
 
-There is no separate test suite. Validate by evaluating representative outputs before switching:
+Run the flake checks before switching. They include Python unit tests for `codex-notify`, `codex-wecom-relay`, and `codex-archive-backtrack`, plus evaluation of every declared host:
 
 ```bash
-check-eval
+nix flake check
 ```
 
 For risky Home Manager changes, run `check-activation` before `hms` or `rebuild`. It can dry-run non-local architectures, but it only validates the activation package build plan; it does not prove the remote host can activate successfully or decrypt its sops secrets.

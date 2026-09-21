@@ -52,38 +52,6 @@
 
       commands = [
         {
-          name = "check-eval";
-          category = "checks";
-          help = "evaluate flake outputs for all declared hosts";
-          command = ''
-            set -euo pipefail
-            nix eval --impure "$PRJ_ROOT#user-pubkeys" --json >/dev/null
-
-            nix eval --impure "$PRJ_ROOT#hosts" --json \
-              | ${jq} -r 'to_entries[] | [.key, .value.user, .value.isDarwin, .value.isLinux, .value.platform] | @tsv' \
-              | while IFS=$'\t' read -r host user isDarwin isLinux platform; do
-                home="$user@$host"
-                echo "eval homeConfigurations.\"$home\""
-                nix eval --impure "$PRJ_ROOT#homeConfigurations.\"$home\".config.home.stateVersion" >/dev/null
-
-                if [[ "$isDarwin" == "true" ]]; then
-                  echo "eval darwinConfigurations.$host"
-                  nix eval --impure "$PRJ_ROOT#darwinConfigurations.$host.config.system.stateVersion" >/dev/null
-                fi
-
-                if [[ "$isLinux" == "true" && "$platform" != "generic" ]]; then
-                  echo "eval nixosConfigurations.$host"
-                  nix eval --impure "$PRJ_ROOT#nixosConfigurations.$host.config.system.stateVersion" >/dev/null
-                fi
-
-                if [[ "$platform" == "generic" ]]; then
-                  echo "eval genericConfigurations.$host"
-                  nix eval --impure "$PRJ_ROOT#genericConfigurations.$host.config.system.build.activationPackage.drvPath" >/dev/null
-                fi
-              done
-          '';
-        }
-        {
           name = "check-activation";
           category = "checks";
           help = "dry-run Home Manager activation packages for all declared hosts";

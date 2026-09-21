@@ -39,7 +39,7 @@ With direnv installed, `direnv allow` activates the devshell automatically when 
 
 ## Checks & deployment
 
-- `check-eval`: evaluate flake outputs for all declared hosts.
+- `nix flake check`: run Python package tests for the current system and evaluate configurations for all declared hosts.
 - `check-activation`: dry-run Home Manager activation packages for all hosts.
 - `hms`: run `home-manager switch` only.
 - `rebuild`: host system activation, then `hms`.
