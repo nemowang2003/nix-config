@@ -66,7 +66,7 @@ in {
           gc = build-gc cfg;
         };
       }
-      // lib.optionalAttrs (cfg.isLinux && cfg.determinate) {
+      // lib.optionalAttrs cfg.isLinux {
         determinate.enable = cfg.determinate;
       };
 }

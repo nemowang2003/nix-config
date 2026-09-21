@@ -9,6 +9,7 @@
 }: {
   imports = [
     inputs.catppuccin.nixosModules.catppuccin
+    inputs.determinate.nixosModules.default
     ./platforms/${cfg.platform}
   ];
 
