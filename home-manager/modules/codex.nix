@@ -14,10 +14,6 @@
   # generated settings; only replace the main config symlink with a mutable
   # activation merge.
 
-  # A null package has no detectable version, so match programs.codex and
-  # assume latest behavior.
-  at-least = version: cfg.package == null || lib.versionAtLeast (lib.getVersion cfg.package) version;
-  is-toml-config = at-least "0.2.0";
   mirrored-codex-options = self.lib.options.mirror-options {
     inherit upstream;
     excluded = ["enable" "custom-instructions"];
@@ -87,17 +83,13 @@ in {
       (chunk: chunk != "")
       (map (chunk: lib.trim (render-context-chunk chunk)) cfg.contexts);
 
-    use-xdg-directories = config.home.preferXdgDirectories && is-toml-config;
+    use-xdg-directories = config.home.preferXdgDirectories;
     xdg-config-home = lib.removePrefix config.home.homeDirectory config.xdg.configHome;
     config-dir =
       if use-xdg-directories
       then "${xdg-config-home}/codex"
       else ".codex";
-    config-file-name =
-      if is-toml-config
-      then "config.toml"
-      else "config.yaml";
-    config-target = "${config-dir}/${config-file-name}";
+    config-target = "${config-dir}/config.toml";
     config-path = "${config.home.homeDirectory}/${config-target}";
     has-config-source = lib.hasAttrByPath [config-target "source"] config.home.file;
     config-source = lib.getAttrFromPath [config-target "source"] config.home.file;
@@ -122,11 +114,6 @@ in {
       (lib.attrNames cfg.profiles)
     );
 
-    format =
-      if is-toml-config
-      then "toml"
-      else "yaml";
-
     mk-mutable-merge = {
       path,
       source,
@@ -134,7 +121,8 @@ in {
     }:
       lib.hm.dag.entryAfter ["writeBoundary"] (
         self.lib.mutable-config.mk-mutable-merge {
-          inherit pkgs format path source removed-paths;
+          inherit pkgs path source removed-paths;
+          format = "toml";
         }
       );
   in
