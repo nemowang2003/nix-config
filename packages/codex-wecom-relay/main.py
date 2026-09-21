@@ -52,6 +52,7 @@ TOKEN_RE = re.compile(r"r#([0-9a-f]{8})")
 STREAM_FLUSH_INTERVAL = 0.8
 MAX_STREAM_CHARS = 20000
 TOKEN_TTL_SECONDS = 7 * 86400
+COMMAND_ACK_TIMEOUT = 15
 
 
 def load_json(path, default):
@@ -212,7 +213,7 @@ class Relay:
         self._seen = deque(maxlen=1000)
         self._tokens = {}
         self._last_push = {}
-        self._turns = asyncio.Semaphore(4)
+        self._pending_commands = {}
         self._load_tokens()
         self._load_last_push()
 
@@ -243,14 +244,32 @@ class Relay:
         self._seq += 1
         return f"codex-wecom-relay-{os.getpid()}-{time.time_ns()}-{self._seq}"
 
-    async def _send(self, ws, cmd, body=None, req_id=None):
+    async def _send(self, ws, cmd, body=None, req_id=None, wait_for_ack=False):
         payload = {
             "cmd": cmd,
             "headers": {"req_id": req_id or self._req_id()},
             "body": body or {},
         }
-        await ws.send(json.dumps(payload))
-        return payload["headers"]["req_id"]
+        request_id = payload["headers"]["req_id"]
+        response = None
+        if wait_for_ack:
+            response = asyncio.get_running_loop().create_future()
+            self._pending_commands[request_id] = response
+        try:
+            await ws.send(json.dumps(payload))
+            if response is None:
+                return request_id
+            return await asyncio.wait_for(response, timeout=COMMAND_ACK_TIMEOUT)
+        finally:
+            self._pending_commands.pop(request_id, None)
+
+    def _resolve_command(self, message):
+        request_id = message.get("headers", {}).get("req_id")
+        pending = self._pending_commands.get(request_id)
+        if pending is None or pending.done():
+            return False
+        pending.set_result(message)
+        return True
 
     async def _respond(self, ws, callback, body):
         req_id = callback.get("headers", {}).get("req_id", "")
@@ -315,7 +334,13 @@ class Relay:
                 lines.pop(0)
                 self._checkpoint_outbox(tmp, lines)
                 continue
-            token = self._new_token(thread_id)
+            token = entry.get("token") or ""
+            token_entry = self._tokens.get(token)
+            if token_entry is None or token_entry.get("thread") != thread_id:
+                token = self._new_token(thread_id)
+                entry["token"] = token
+                lines[0] = json.dumps(entry) + "\n"
+                self._checkpoint_outbox(tmp, lines)
             content = "\n\n".join(
                 section
                 for section in [
@@ -325,7 +350,7 @@ class Relay:
                 ]
                 if section
             )
-            await self._send(
+            response = await self._send(
                 ws,
                 "aibot_send_msg",
                 {
@@ -334,7 +359,13 @@ class Relay:
                     "msgtype": "markdown",
                     "markdown": {"content": content},
                 },
+                wait_for_ack=True,
             )
+            if response.get("errcode") not in (None, 0):
+                raise RuntimeError(
+                    f"aibot_send_msg rejected: errcode={response.get('errcode')} "
+                    f"errmsg={response.get('errmsg')}"
+                )
             self.log.info("pushed thread=%s token=r#%s", thread_id, token)
             self._last_push[target] = {
                 "token": token,
@@ -467,8 +498,7 @@ class Relay:
         if token and token in self._tokens:
             thread_id = self._tokens[token]["thread"]
             self.log.info("reply token=r#%s thread=%s", token, thread_id)
-            async with self._turns:
-                await self._run_turn(ws, callback, thread_id, text)
+            await self._run_turn(ws, callback, thread_id, text)
         else:
             await self._respond_markdown(
                 ws,
@@ -493,6 +523,7 @@ class Relay:
             )
             subscribed = False
             last_activity = [time.monotonic()]
+            callback_queue = asyncio.Queue()
 
             async def receive():
                 nonlocal subscribed
@@ -501,13 +532,14 @@ class Relay:
                     message = json.loads(raw)
                     cmd = message.get("cmd")
                     if cmd == "aibot_msg_callback":
-                        await self._handle_callback(ws, message)
+                        await callback_queue.put(message)
                     elif cmd == "aibot_event_callback":
                         event = message.get("body", {}).get("event", {}).get("eventtype")
                         self.log.info("event=%s", event)
                         if event == "disconnected_event":
                             raise ConnectionError("connection superseded by another client")
                     else:
+                        self._resolve_command(message)
                         errcode = message.get("errcode")
                         if errcode not in (None, 0):
                             if not subscribed:
@@ -523,6 +555,17 @@ class Relay:
                         elif not subscribed:
                             subscribed = True
                             self.log.info("subscribed bot_id=%s", self.bot_id)
+                raise ConnectionError("connection closed")
+
+            async def handle_callbacks():
+                while True:
+                    callback = await callback_queue.get()
+                    try:
+                        await self._handle_callback(ws, callback)
+                    except Exception:
+                        self.log.exception("callback processing failed")
+                    finally:
+                        callback_queue.task_done()
 
             async def heartbeat():
                 while True:
@@ -535,7 +578,27 @@ class Relay:
                     if time.monotonic() - last_activity[0] > 90:
                         raise ConnectionError("no server activity for 90s")
 
-            await asyncio.gather(receive(), heartbeat(), self._outbox_loop(ws), watchdog())
+            tasks = [
+                asyncio.create_task(receive()),
+                asyncio.create_task(handle_callbacks()),
+                asyncio.create_task(heartbeat()),
+                asyncio.create_task(self._outbox_loop(ws)),
+                asyncio.create_task(watchdog()),
+            ]
+            try:
+                done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+                for task in done:
+                    error = task.exception()
+                    if error is not None:
+                        raise error
+            finally:
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                for pending in self._pending_commands.values():
+                    if not pending.done():
+                        pending.cancel()
+                self._pending_commands.clear()
 
     async def run(self):
         backoff = 1

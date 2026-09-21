@@ -1,3 +1,4 @@
+import asyncio
 import importlib.util
 import json
 import logging
@@ -54,10 +55,40 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
             )
             websocket = FakeWebSocket()
 
-            await relay._process_outbox(websocket)
+            delivery = asyncio.create_task(relay._process_outbox(websocket))
+            while not websocket.messages:
+                await asyncio.sleep(0)
+            request_id = websocket.messages[0]["headers"]["req_id"]
+            relay._resolve_command({"headers": {"req_id": request_id}, "errcode": 0})
+            await delivery
 
             self.assertEqual(websocket.messages[0]["cmd"], "aibot_send_msg")
             self.assertFalse(Path(relay.outbox + ".processing").exists())
+
+    async def test_rejected_delivery_remains_in_processing_queue(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            Path(relay.outbox).write_text(
+                json.dumps({"thread": "thread", "chatid": "user", "content": "done"}) + "\n",
+                encoding="utf-8",
+            )
+            websocket = FakeWebSocket()
+
+            delivery = asyncio.create_task(relay._process_outbox(websocket))
+            while not websocket.messages:
+                await asyncio.sleep(0)
+            request_id = websocket.messages[0]["headers"]["req_id"]
+            relay._resolve_command(
+                {
+                    "headers": {"req_id": request_id},
+                    "errcode": 40001,
+                    "errmsg": "rejected",
+                }
+            )
+
+            with self.assertRaises(RuntimeError):
+                await delivery
+            self.assertTrue(Path(relay.outbox + ".processing").exists())
 
     def test_stream_id_is_stable(self):
         relay = self.make_relay("/tmp/unused-codex-wecom-relay-test")
