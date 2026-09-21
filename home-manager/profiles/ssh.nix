@@ -6,6 +6,7 @@
   ...
 }: let
   nc = lib.getExe pkgs.netcat;
+  authorized-keys = pkgs.writeText "authorized_keys" (lib.concatStringsSep "\n" self.user-pubkeys + "\n");
   public-hosts = lib.filterAttrs (_: cfg: cfg.public) self.hosts;
   mk-public-secret = hostname: _: {
     name = "text/public-ips/${hostname}";
@@ -80,10 +81,11 @@ in {
 
       if [ -f "$AUTH_FILE" ] && [ ! -L "$AUTH_FILE" ]; then
         $DRY_RUN_CMD mv "$AUTH_FILE" "$AUTH_FILE.$HOME_MANAGER_BACKUP_EXT"
+      elif [ -L "$AUTH_FILE" ]; then
+        $DRY_RUN_CMD rm -f "$AUTH_FILE"
       fi
 
-      $DRY_RUN_CMD echo "${lib.concatStringsSep "\n" self.user-pubkeys}" > "$AUTH_FILE"
-      $DRY_RUN_CMD chmod 600 "$AUTH_FILE"
+      $DRY_RUN_CMD install -m 600 ${lib.escapeShellArg authorized-keys} "$AUTH_FILE"
     '';
   };
 }
