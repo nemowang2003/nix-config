@@ -86,6 +86,24 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
                 await delivery
             self.assertTrue(Path(relay.outbox + ".processing").exists())
 
+    async def test_missing_ack_code_remains_in_processing_queue(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            Path(relay.outbox).write_text(
+                json.dumps({"thread": "thread", "chatid": "user", "content": "done"}) + "\n",
+                encoding="utf-8",
+            )
+            websocket = FakeWebSocket()
+            delivery = asyncio.create_task(relay._process_outbox(websocket))
+            while not websocket.messages:
+                await asyncio.sleep(0)
+            request_id = websocket.messages[0]["headers"]["req_id"]
+            relay._resolve_command({"headers": {"req_id": request_id}})
+
+            with self.assertRaises(RuntimeError):
+                await delivery
+            self.assertTrue(Path(relay.outbox + ".processing").exists())
+
     def test_stream_id_is_stable(self):
         relay = self.make_relay("/tmp/unused-codex-wecom-relay-test")
         callback = {"headers": {"req_id": "request-id"}}

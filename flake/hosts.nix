@@ -8,11 +8,12 @@
     determinate ? false,
     platform ? "native", # for linux. "native" "wsl" ... for nixos, "generic" for non-nixos
     trusted ? false,
+    notify-wecom ? false,
     user-pubkey ? null,
     age-recipient ? null,
     public ? false,
   }: {
-    inherit arch user domestic determinate platform trusted user-pubkey age-recipient public;
+    inherit arch user domestic determinate platform trusted notify-wecom user-pubkey age-recipient public;
     isDarwin = isDarwin arch;
     isLinux = isLinux arch;
   };
@@ -27,6 +28,7 @@
     "dt-w01" = mkHost {
       platform = "wsl";
       trusted = true;
+      notify-wecom = true;
       user-pubkey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFmKIHSNffGDt7/rf4ADMV6acXwndDh9FU8JYj2ouIDt nemo@dt-w01";
       age-recipient = "age1p73za2fx80h3wtwv5wl8atd2eslf50m94c0dy9zl2pls94yumavqg8t4cu";
     };

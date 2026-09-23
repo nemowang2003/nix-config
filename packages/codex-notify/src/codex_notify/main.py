@@ -27,6 +27,7 @@ logged; URLs and userids appear solely in short-lived argv or outbox lines.
 """
 
 import base64
+import fcntl
 import hashlib
 import json
 import os
@@ -37,7 +38,9 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
+import uuid
 
 import httpx
 
@@ -63,6 +66,8 @@ reply_outbox = os.path.join(
     "codex-wecom-relay",
     "outbox.jsonl",
 )
+serverchan_outbox = os.path.join(state_dir, "serverchan-outbox")
+SERVERCHAN_RETRY_DELAYS = (2, 5)
 
 PS_TOAST_SCRIPT = """
 $t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("%s"));
@@ -83,7 +88,7 @@ def log(msg):
         with open(os.path.join(log_dir, "notify.log"), "a") as handle:
             handle.write(f"[{time.strftime('%F %T %z')}] {msg}\n")
     except OSError:
-        pass
+        print(f"codex-notify: {msg}", file=sys.stderr)
 
 
 def key_for(thread_id):
@@ -210,20 +215,23 @@ def notify_local(title, content):
         return
     powershell = shutil.which("powershell.exe")
     if not powershell:
+        log("notify local failed: powershell.exe unavailable")
         return
     b64_title = base64.b64encode(clean_control_chars(title).encode()).decode()
     b64_body = base64.b64encode(clean_control_chars(content).encode()).decode()
     script = PS_TOAST_SCRIPT % (b64_title, b64_body)
     try:
-        subprocess.run(
+        result = subprocess.run(
             [powershell, "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=30,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        pass
+        if result.returncode:
+            log(f"notify local failed: exit_code={result.returncode}")
+    except (OSError, subprocess.TimeoutExpired) as error:
+        log(f"notify local failed: {type(error).__name__}")
 
 
 def queue_wecom_push(thread_id, content, chatid):
@@ -242,10 +250,51 @@ def queue_wecom_push(thread_id, content, chatid):
                 "at": int(time.time()),
             }
         )
-        with open(reply_outbox, "a", encoding="utf-8") as handle:
-            handle.write(entry + "\n")
-    except OSError:
-        log("notify wecom outbox write failed")
+        line = (entry + "\n").encode()
+        fd = os.open(reply_outbox, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        try:
+            if os.write(fd, line) != len(line):
+                raise OSError("short outbox write")
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        log(f"notify wecom queued thread={thread_id}")
+    except OSError as error:
+        log(f"notify wecom outbox write failed: {type(error).__name__}")
+
+
+def save_serverchan_item(path, item):
+    os.makedirs(serverchan_outbox, mode=0o700, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(dir=serverchan_outbox, prefix=".pending-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(item, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def queue_serverchan(thread_id, turn_id, title, content, profile):
+    item_id = key_for(f"{thread_id}:{turn_id}") if turn_id else uuid.uuid4().hex
+    path = os.path.join(serverchan_outbox, f"{item_id}.json")
+    try:
+        save_serverchan_item(
+            path,
+            {
+                "thread": thread_id,
+                "turn": turn_id,
+                "title": title,
+                "content": content,
+                "profile": profile,
+                "attempts": 0,
+            },
+        )
+        log(f"serverchan queued thread={thread_id} turn={turn_id}")
+    except OSError as error:
+        log(f"serverchan queue failed: {type(error).__name__} thread={thread_id}")
 
 
 def send_serverchan(title, content, url):
@@ -258,14 +307,74 @@ def send_serverchan(title, content, url):
             trust_env=False,
         )
         response.raise_for_status()
+        try:
+            body = response.json()
+        except ValueError:
+            log("serverchan error: invalid JSON response")
+            return 1
+        if not isinstance(body, dict) or body.get("code") != 0:
+            code = body.get("code") if isinstance(body, dict) else None
+            safe_code = code if isinstance(code, int) and not isinstance(code, bool) else "invalid"
+            log(f"serverchan error: api_code={safe_code}")
+            return 1
         log(f"serverchan done http_code={response.status_code}")
         return 0
+    except httpx.HTTPStatusError as error:
+        log(f"serverchan error: http_code={error.response.status_code}")
+        return 1
     except httpx.HTTPError as error:
         log(f"serverchan error: {type(error).__name__}")
         return 1
 
 
-def dispatch_notifications(title, content, serverchan_url):
+def drain_serverchan():
+    if not os.path.isdir(serverchan_outbox):
+        return
+    lock_path = os.path.join(state_dir, "serverchan-drain.lock")
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        # Only the detached worker waits for this lock. A concurrent hook may
+        # enqueue after the first worker lists the directory, so its own worker
+        # must wait and drain rather than silently leave that message behind.
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        for name in sorted(os.listdir(serverchan_outbox)):
+            if not name.endswith(".json"):
+                continue
+            path = os.path.join(serverchan_outbox, name)
+            try:
+                with open(path, encoding="utf-8") as handle:
+                    item = json.load(handle)
+            except (OSError, ValueError) as error:
+                log(f"serverchan queue read failed: {name} {type(error).__name__}")
+                continue
+            if not isinstance(item, dict) or not all(
+                isinstance(item.get(field), str) for field in ("title", "content", "profile")
+            ):
+                log(f"serverchan queue invalid: {name}")
+                continue
+            profile = item.get("profile") or DEFAULT_PROFILE
+            url = (load_routes().get(profile) or {}).get("serverchan") or ""
+            if not url:
+                log(f"serverchan route missing: profile={profile}")
+                continue
+            for delay in (0, *SERVERCHAN_RETRY_DELAYS):
+                if delay:
+                    time.sleep(delay)
+                if send_serverchan(item["title"], item["content"], url) == 0:
+                    os.unlink(path)
+                    log(f"serverchan delivered thread={item.get('thread')} turn={item.get('turn')}")
+                    break
+                item["attempts"] = item.get("attempts", 0) + 1
+                save_serverchan_item(path, item)
+                if delay != SERVERCHAN_RETRY_DELAYS[-1]:
+                    log(f"serverchan delivery failed thread={item.get('thread')} retrying")
+            else:
+                log(f"serverchan delivery failed thread={item.get('thread')} retained for next hook")
+    finally:
+        os.close(fd)
+
+
+def dispatch_notifications(title, content):
     """Deliver slow notifications outside the hook's timeout budget."""
     try:
         pid = os.fork()
@@ -284,10 +393,7 @@ def dispatch_notifications(title, content, serverchan_url):
             os.dup2(output.fileno(), sys.stderr.fileno())
 
         notify_local(title, content)
-        log("notify local done")
-        if serverchan_url:
-            rc = send_serverchan(title, content, serverchan_url)
-            log(f"notify serverchan done rc={rc}")
+        drain_serverchan()
     except Exception as error:
         log(f"notification delivery exception: {type(error).__name__}")
     finally:
@@ -365,6 +471,7 @@ def cmd_pick():
 
 def cmd_notify(args):
     title = args[1] if len(args) > 1 else "Codex"
+    wecom_enabled = "--wecom-relay" in args[2:]
     payload = stdin_json()
 
     # A blocking Stop hook elsewhere re-runs the whole Stop set in the same
@@ -386,15 +493,19 @@ def cmd_notify(args):
     route = load_routes().get(profile) or {}
     url = route.get("serverchan") or ""
     chatid = route.get("wecom") or ""
-    if not url:
+    if url:
+        queue_serverchan(thread_id, turn_id, full_title, content, profile)
+    else:
         log("notify serverchan skip: url profile missing")
 
-    if chatid:
+    if chatid and wecom_enabled:
         queue_wecom_push(thread_id, content, chatid)
+    elif chatid:
+        log("notify wecom skip: no relay configured on this host")
     else:
         log(f"notify wecom skip: route {profile} has no wecom userid")
 
-    dispatch_notifications(full_title, content, url)
+    dispatch_notifications(full_title, content)
     return 0
 
 
@@ -409,6 +520,9 @@ def main(argv):
             return cmd_pick()
         if command == "notify":
             return cmd_notify(argv[1:])
+        if command == "drain":
+            drain_serverchan()
+            return 0
         log(f"unknown subcommand: {command}")
         return 0
     except Exception as error:

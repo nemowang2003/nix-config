@@ -361,7 +361,7 @@ class Relay:
                 },
                 wait_for_ack=True,
             )
-            if response.get("errcode") not in (None, 0):
+            if response.get("errcode") != 0:
                 raise RuntimeError(
                     f"aibot_send_msg rejected: errcode={response.get('errcode')} "
                     f"errmsg={response.get('errmsg')}"
@@ -388,12 +388,16 @@ class Relay:
         os.replace(temporary, path)
 
     async def _outbox_loop(self, ws):
+        delay = 1
         while True:
-            await asyncio.sleep(1)
+            await asyncio.sleep(delay)
             try:
                 await self._process_outbox(ws)
             except Exception:
                 self.log.exception("outbox processing failed")
+                delay = min(delay * 2, 60)
+            else:
+                delay = 1
 
     def _extract_reply(self, body):
         text = (body.get("text") or {}).get("content", "")

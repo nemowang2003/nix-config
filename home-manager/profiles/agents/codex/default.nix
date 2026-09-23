@@ -184,7 +184,7 @@ in {
           hooks = [
             {
               type = "command";
-              command = "${lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.codex-notify} notify Codex";
+              command = "${lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.codex-notify} notify Codex${lib.optionalString cfg.notify-wecom " --wecom-relay"}";
               timeout = 3;
             }
           ];
