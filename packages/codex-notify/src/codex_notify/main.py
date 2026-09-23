@@ -41,7 +41,7 @@ import time
 
 import httpx
 
-FZF = "@fzf@"
+FZF = os.environ.get("CODEX_NOTIFY_FZF") or shutil.which("fzf") or "fzf"
 
 DEFAULT_PROFILE = "me"
 
@@ -421,5 +421,9 @@ def main(argv):
         return 1
 
 
+def cli():
+    return main(sys.argv)
+
+
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    sys.exit(cli())

@@ -6,15 +6,14 @@
   }: let
     mk-python-test = {
       name,
-      python,
+      application,
       source,
     }:
-      pkgs.runCommand name {
-        nativeBuildInputs = [python];
-      } ''
+      pkgs.runCommand name {} ''
         export PYTHONDONTWRITEBYTECODE=1
         cd ${source}
-        python test_main.py
+        export PYTHONPATH="$PWD/src"
+        ${application.venv}/bin/python -m unittest discover -s tests
         touch "$out"
       '';
     host-evaluations = lib.concatLists (
@@ -35,19 +34,19 @@
 
       codex-notify-tests = mk-python-test {
         name = "codex-notify-tests";
-        python = pkgs.python314.withPackages (ps: [ps.httpx]);
+        application = self.packages.${pkgs.stdenv.hostPlatform.system}.codex-notify;
         source = ../packages/codex-notify;
       };
 
       codex-wecom-relay-tests = mk-python-test {
         name = "codex-wecom-relay-tests";
-        python = pkgs.python314.withPackages (ps: [ps.websockets]);
+        application = self.packages.${pkgs.stdenv.hostPlatform.system}.codex-wecom-relay;
         source = ../packages/codex-wecom-relay;
       };
 
       codex-archive-backtrack-tests = mk-python-test {
         name = "codex-archive-backtrack-tests";
-        python = pkgs.python314;
+        application = self.packages.${pkgs.stdenv.hostPlatform.system}.codex-archive-backtrack;
         source = ../packages/codex-archive-backtrack;
       };
     };

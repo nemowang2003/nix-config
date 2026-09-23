@@ -1,5 +1,4 @@
 import asyncio
-import importlib.util
 import json
 import logging
 import tempfile
@@ -7,10 +6,7 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-MODULE_PATH = Path(__file__).with_name("main.py")
-SPEC = importlib.util.spec_from_file_location("codex_wecom_relay", MODULE_PATH)
-relay_module = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(relay_module)
+from codex_wecom_relay import main as relay_module
 
 
 class FakeWebSocket:

@@ -1,13 +1,9 @@
-import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-MODULE_PATH = Path(__file__).with_name("main.py")
-SPEC = importlib.util.spec_from_file_location("codex_notify", MODULE_PATH)
-notify = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(notify)
+from codex_notify import main as notify
 
 
 class NotifyTests(unittest.TestCase):

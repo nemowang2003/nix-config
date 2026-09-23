@@ -1,4 +1,3 @@
-import importlib.util
 import json
 import sqlite3
 import tempfile
@@ -7,10 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 
-MODULE_PATH = Path(__file__).with_name("main.py")
-SPEC = importlib.util.spec_from_file_location("codex_archive_backtrack", MODULE_PATH)
-archive = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(archive)
+from codex_archive_backtrack import main as archive
 
 
 def event(payload, timestamp="2026-01-01T00:00:00Z"):

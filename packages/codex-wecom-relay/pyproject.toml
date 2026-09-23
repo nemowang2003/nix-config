@@ -1,0 +1,13 @@
+[project]
+name = "codex-wecom-relay"
+version = "0.1.0"
+description = "WeCom relay for Codex notifications and replies"
+requires-python = ">=3.14,<3.15"
+dependencies = ["websockets>=15,<17"]
+
+[project.scripts]
+codex-wecom-relay = "codex_wecom_relay.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

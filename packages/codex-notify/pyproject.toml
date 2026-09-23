@@ -1,0 +1,13 @@
+[project]
+name = "codex-notify"
+version = "0.1.0"
+description = "Route Codex turn notifications to ServerChan and WeCom"
+requires-python = ">=3.14,<3.15"
+dependencies = ["httpx>=0.28,<0.29"]
+
+[project.scripts]
+codex-notify = "codex_notify.main:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
