@@ -255,6 +255,7 @@ def send_serverchan(title, content, url):
             url,
             data={"title": title, "desp": content},
             timeout=httpx.Timeout(15, connect=10),
+            trust_env=False,
         )
         response.raise_for_status()
         log(f"serverchan done http_code={response.status_code}")

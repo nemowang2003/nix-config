@@ -38,6 +38,16 @@ class NotifyTests(unittest.TestCase):
             finally:
                 notify.state_dir = previous
 
+    @mock.patch.object(notify.httpx, "post")
+    def test_serverchan_ignores_proxy_environment(self, post):
+        post.return_value.status_code = 200
+
+        self.assertEqual(
+            notify.send_serverchan("title", "content", "https://example.invalid"), 0
+        )
+
+        self.assertFalse(post.call_args.kwargs["trust_env"])
+
     @mock.patch.object(notify, "send_serverchan")
     @mock.patch.object(notify.os, "fork", return_value=123)
     def test_notification_dispatch_returns_in_parent(self, fork, send_serverchan):
