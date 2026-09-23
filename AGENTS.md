@@ -66,7 +66,7 @@ For risky Home Manager changes, run `check-activation` before `hms` or `rebuild`
 
 ## Commit & Pull Request Guidelines
 
-Recent commits use concise scoped messages, often in Chinese, such as `home-manager: 加入 rust 相关工具` or `refactor: 重构 flake module 与 nix settings`. Use a short scope followed by the change. Mention affected hosts or modules when relevant. PRs should describe the configuration impact, list validation commands run, and call out secret, cache, or host-registry changes explicitly.
+Recent commits use concise scoped messages, often in Chinese, such as `home-manager: 加入 rust 相关工具` or `refactor: 重构 flake module 与 nix settings`. Use a short scope followed by the change. Mention affected hosts or modules when relevant. For larger work, start a development branch with `git switch -c <branch-name>`, commit coherent steps there, then squash or fixup related commits and rebase before integrating into `main`. Keep `main` focused on one commit per logical change. PRs should describe the configuration impact, list validation commands run, and call out secret, cache, or host-registry changes explicitly.
 
 ## Security & Configuration Tips
 
