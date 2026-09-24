@@ -13,9 +13,9 @@ Two loops feed it:
   The message is pushed to WeCom as markdown embedding a short `r#xxxxxxxx`
   token, and token -> thread is recorded in tokens.json.
 - When the user quotes that message and replies, the callback's quote field
-  carries the token; it resolves the token to the thread, starts a turn on
-  the local app-server (`turn/start`) and streams the agent text back as a
-  WeCom stream message.
+  carries the token; it resolves the token to the thread, waits until the
+  thread is idle, then starts a turn on the local app-server (`turn/start`)
+  and streams the agent text back as a WeCom stream message.
 
 The app-server control socket at
 $CODEX_HOME/app-server-control/app-server-control.sock speaks WebSocket over a
@@ -50,6 +50,8 @@ WSS_URL = "wss://openws.work.weixin.qq.com"
 PING_INTERVAL = 30
 TOKEN_RE = re.compile(r"r#([0-9a-f]{8})")
 STREAM_FLUSH_INTERVAL = 0.8
+TURN_IDLE_SETTLE_SECONDS = 0.5
+TURN_STATUS_POLL_SECONDS = 0.25
 MAX_STREAM_CHARS = 20000
 TOKEN_TTL_SECONDS = 7 * 86400
 COMMAND_ACK_TIMEOUT = 15
@@ -90,7 +92,9 @@ class AppServer:
         self._next_id = 0
 
     def connect(self):
-        self._socket = unix_connect(self.path, open_timeout=30, ping_interval=None)
+        self._socket = unix_connect(
+            self.path, open_timeout=30, ping_interval=None, compression=None
+        )
 
     def close(self):
         if self._socket is not None:
@@ -157,17 +161,40 @@ class AppServer:
         )
 
     def run_turn(self, thread_id, text):
-        """Start a turn and yield ("delta", text) until ("done", status)."""
+        """Wait for an idle thread, then start a turn and stream its result."""
         self.initialize()
-        try:
-            self.start_turn(thread_id, text)
-        except AppServerError:
-            # The thread may not be loaded in this app-server process yet.
-            self.resume_thread(thread_id)
-            self.start_turn(thread_id, text)
+        # A connection must subscribe to the thread even when another client
+        # already loaded it. Otherwise turn/start can succeed while this
+        # connection receives none of the turn's notifications.
+        self.resume_thread(thread_id)
+        queued = False
+        idle_since = None
+        while True:
+            thread = (self.read_thread(thread_id) or {}).get("thread") or {}
+            status = (thread.get("status") or {}).get("type")
+            if status == "idle":
+                if idle_since is None:
+                    idle_since = time.monotonic()
+                if time.monotonic() - idle_since >= TURN_IDLE_SETTLE_SECONDS:
+                    break
+            elif status == "active":
+                idle_since = None
+                if not queued:
+                    queued = True
+                    yield ("queued", None)
+            else:
+                raise AppServerError(f"thread {thread_id} has status {status!r}")
+            time.sleep(TURN_STATUS_POLL_SECONDS)
+        started = self.start_turn(thread_id, text) or {}
+        turn_id = (started.get("turn") or {}).get("id")
+        if not turn_id:
+            raise AppServerError("turn/start returned no turn ID")
         for notification in self.notifications():
             method = notification.get("method")
             params = notification.get("params", {})
+            notification_turn_id = params.get("turnId") or (params.get("turn") or {}).get("id")
+            if notification_turn_id != turn_id:
+                continue
             if method == "item/agentMessage/delta":
                 yield ("delta", params.get("delta", ""))
             elif method == "turn/completed":
@@ -462,6 +489,8 @@ class Relay:
                         await self._stream(
                             ws, callback, stream_id, "".join(parts)[-MAX_STREAM_CHARS:], False
                         )
+                elif kind == "queued":
+                    await self._stream(ws, callback, stream_id, "已排队，等待当前任务完成。", False)
                 elif kind == "done":
                     status = value
                 else:  # error
