@@ -13,6 +13,7 @@ use `pip install` or create virtual environments manually.
 
 ## Commit discipline
 
-Commit early and often. After each coherent change, make a focused commit with
-a concise scoped message rather than accumulating unrelated edits or leaving
-work uncommitted for long stretches.
+Commit coherent steps early while working. For larger work, start a development
+branch with `git switch -c <branch-name>`, make focused commits there, then
+squash or fixup related commits and rebase before integrating into `main`.
+Keep `main` focused on one commit per logical change.
