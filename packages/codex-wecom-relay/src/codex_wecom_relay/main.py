@@ -13,9 +13,9 @@ Two loops feed it:
   The message is pushed to WeCom as markdown embedding a short `r#xxxxxxxx`
   token, and token -> thread is recorded in tokens.json.
 - When the user quotes that message and replies, the callback's quote field
-  carries the token; it resolves the token to the thread, waits until the
-  thread is idle, then starts a turn on the local app-server (`turn/start`)
-  and streams the agent text back as a WeCom stream message.
+  carries the token; it resolves the token to the thread, queues the reply
+  through the local app-server (`thread/queue/add`), and streams that turn's
+  agent text back as a WeCom stream message.
 
 The app-server control socket at
 $CODEX_HOME/app-server-control/app-server-control.sock speaks WebSocket over a
@@ -50,8 +50,6 @@ WSS_URL = "wss://openws.work.weixin.qq.com"
 PING_INTERVAL = 30
 TOKEN_RE = re.compile(r"r#([0-9a-f]{8})")
 STREAM_FLUSH_INTERVAL = 0.8
-TURN_IDLE_SETTLE_SECONDS = 0.5
-TURN_STATUS_POLL_SECONDS = 0.25
 MAX_STREAM_CHARS = 20000
 TOKEN_TTL_SECONDS = 7 * 86400
 COMMAND_ACK_TIMEOUT = 15
@@ -90,6 +88,7 @@ class AppServer:
         )
         self._socket = None
         self._next_id = 0
+        self._pending_notifications = deque()
 
     def connect(self):
         self._socket = unix_connect(
@@ -120,6 +119,8 @@ class AppServer:
         while True:
             message = self._receive_json()
             if message.get("id") != request_id:
+                if "method" in message:
+                    self._pending_notifications.append(message)
                 continue
             if "error" in message:
                 raise AppServerError(f"{method} failed: {message['error']}")
@@ -127,7 +128,11 @@ class AppServer:
 
     def notifications(self):
         while True:
-            message = self._receive_json()
+            message = (
+                self._pending_notifications.popleft()
+                if self._pending_notifications
+                else self._receive_json()
+            )
             if "method" in message:
                 yield message
 
@@ -151,49 +156,44 @@ class AppServer:
     def read_thread(self, thread_id):
         return self.request("thread/read", {"threadId": thread_id, "includeTurns": False})
 
-    def start_turn(self, thread_id, text):
+    def queue_turn(self, thread_id, text, client_message_id):
+        # TUI Tab follow-ups live in the TUI, outside this server queue. If
+        # both clients submit at the same idle boundary, the TUI's turn/start
+        # can steer into a turn started from this queue. See README.md.
         return self.request(
-            "turn/start",
+            "thread/queue/add",
             {
                 "threadId": thread_id,
                 "input": [{"type": "text", "text": text}],
+                "clientUserMessageId": client_message_id,
             },
         )
 
     def run_turn(self, thread_id, text):
-        """Wait for an idle thread, then start a turn and stream its result."""
+        """Queue a turn and stream the response tied to its user message."""
         self.initialize()
         # A connection must subscribe to the thread even when another client
-        # already loaded it. Otherwise turn/start can succeed while this
+        # already loaded it. Otherwise queue/add can succeed while this
         # connection receives none of the turn's notifications.
         self.resume_thread(thread_id)
-        queued = False
-        idle_since = None
-        while True:
-            thread = (self.read_thread(thread_id) or {}).get("thread") or {}
-            status = (thread.get("status") or {}).get("type")
-            if status == "idle":
-                if idle_since is None:
-                    idle_since = time.monotonic()
-                if time.monotonic() - idle_since >= TURN_IDLE_SETTLE_SECONDS:
-                    break
-            elif status == "active":
-                idle_since = None
-                if not queued:
-                    queued = True
-                    yield ("queued", None)
-            else:
-                raise AppServerError(f"thread {thread_id} has status {status!r}")
-            time.sleep(TURN_STATUS_POLL_SECONDS)
-        started = self.start_turn(thread_id, text) or {}
-        turn_id = (started.get("turn") or {}).get("id")
-        if not turn_id:
-            raise AppServerError("turn/start returned no turn ID")
+        client_message_id = secrets.token_hex(16)
+        queued = self.queue_turn(thread_id, text, client_message_id) or {}
+        if not (queued.get("queuedSubmission") or {}).get("id"):
+            raise AppServerError("thread/queue/add returned no queued submission ID")
+        yield ("queued", None)
+        turn_id = None
         for notification in self.notifications():
             method = notification.get("method")
             params = notification.get("params", {})
+            if (
+                method == "item/started"
+                and (params.get("item") or {}).get("type") == "userMessage"
+                and (params.get("item") or {}).get("clientId") == client_message_id
+            ):
+                turn_id = params.get("turnId")
+                continue
             notification_turn_id = params.get("turnId") or (params.get("turn") or {}).get("id")
-            if notification_turn_id != turn_id:
+            if turn_id is None or notification_turn_id != turn_id:
                 continue
             if method == "item/agentMessage/delta":
                 yield ("delta", params.get("delta", ""))
@@ -241,6 +241,9 @@ class Relay:
         self._tokens = {}
         self._last_push = {}
         self._pending_commands = {}
+        # Preserve WeCom callback order while each app-server connection
+        # performs provider lookup and queue/add. Streaming may then overlap.
+        self._submission_lock = asyncio.Lock()
         self._load_tokens()
         self._load_last_push()
 
@@ -455,17 +458,15 @@ class Relay:
 
     async def _run_turn(self, ws, callback, thread_id, text):
         stream_id = self._stream_id(callback)
-        try:
-            app = await asyncio.to_thread(self._app_for_thread, thread_id)
-        except (AppServerError, ConnectionError, OSError) as exc:
-            self.log.warning("provider lookup failed thread=%s: %s", thread_id, exc)
-            await self._respond_markdown(ws, callback, f"Codex 注入失败：{exc}")
-            return
+        await self._submission_lock.acquire()
+        submission_locked = True
+        app = None
         parts = []
         last_flush = 0.0
         status = None
         result_queue = queue.Queue()
         try:
+            app = await asyncio.to_thread(self._app_for_thread, thread_id)
             await asyncio.to_thread(app.connect)
             producer = threading.Thread(
                 target=_turn_producer,
@@ -491,6 +492,8 @@ class Relay:
                         )
                 elif kind == "queued":
                     await self._stream(ws, callback, stream_id, "已排队，等待当前任务完成。", False)
+                    self._submission_lock.release()
+                    submission_locked = False
                 elif kind == "done":
                     status = value
                 else:  # error
@@ -506,7 +509,10 @@ class Relay:
             self.log.exception("turn failed thread=%s", thread_id)
             await self._respond_markdown(ws, callback, "Codex 注入失败：内部错误")
         finally:
-            app.close()
+            if submission_locked:
+                self._submission_lock.release()
+            if app is not None:
+                app.close()
 
     async def _handle_callback(self, ws, callback):
         body = callback.get("body", {})
@@ -557,6 +563,7 @@ class Relay:
             subscribed = False
             last_activity = [time.monotonic()]
             callback_queue = asyncio.Queue()
+            callback_tasks = set()
 
             async def receive():
                 nonlocal subscribed
@@ -591,14 +598,19 @@ class Relay:
                 raise ConnectionError("connection closed")
 
             async def handle_callbacks():
-                while True:
-                    callback = await callback_queue.get()
+                async def handle_one(callback):
                     try:
                         await self._handle_callback(ws, callback)
                     except Exception:
                         self.log.exception("callback processing failed")
                     finally:
                         callback_queue.task_done()
+
+                while True:
+                    callback = await callback_queue.get()
+                    task = asyncio.create_task(handle_one(callback))
+                    callback_tasks.add(task)
+                    task.add_done_callback(callback_tasks.discard)
 
             async def heartbeat():
                 while True:
@@ -627,7 +639,10 @@ class Relay:
             finally:
                 for task in tasks:
                     task.cancel()
+                for task in callback_tasks:
+                    task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
+                await asyncio.gather(*callback_tasks, return_exceptions=True)
                 for pending in self._pending_commands.values():
                     if not pending.done():
                         pending.cancel()
