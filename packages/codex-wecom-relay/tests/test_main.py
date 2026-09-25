@@ -50,6 +50,7 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
             "wss://example.invalid",
             directory,
             logging.getLogger("test"),
+            "/tmp/openai.sock",
         )
 
     def test_app_server_unix_handshake_disables_compression(self):
@@ -291,6 +292,7 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
             "wss://example.invalid",
             "/tmp/unused-codex-wecom-relay-test",
             logging.getLogger("test"),
+            "/tmp/openai.sock",
             {"tca": "/tmp/tca.sock"},
         )
 
@@ -300,9 +302,15 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
 
             relay._app_for_thread("thread")
 
-            app_server.assert_any_call()
+            app_server.assert_any_call("/tmp/openai.sock")
             app_server.assert_called_with("/tmp/tca.sock")
             metadata.close.assert_called_once_with()
+
+    def test_default_provider_uses_explicit_socket(self):
+        relay = self.make_relay("/tmp/unused-codex-wecom-relay-test")
+        with patch.object(relay_module, "AppServer") as app_server:
+            relay._app_for_thread("thread")
+            app_server.assert_called_once_with("/tmp/openai.sock")
 
 
 if __name__ == "__main__":
