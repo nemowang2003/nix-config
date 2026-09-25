@@ -1,4 +1,6 @@
 {cfg, ...}: {
+  time.timeZone = "Asia/Shanghai";
+
   systemd = {
     # codex-openai-app-server, codex-tca-app-server, and codex-wecom-relay are
     # home-manager user services (see
