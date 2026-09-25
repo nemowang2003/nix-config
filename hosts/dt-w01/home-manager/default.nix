@@ -56,6 +56,7 @@ in {
           "XDG_CACHE_HOME=${user-home}/.cache"
           "XDG_CONFIG_HOME=${user-home}/.config"
           "XDG_STATE_HOME=${user-home}/.local/state"
+          "HTTPS_PROXY=http://127.0.0.1:7890"
         ];
         ExecStartPre = [
           "${lib.getExe' pkgs.coreutils "mkdir"} -p ${socket-dir}"
