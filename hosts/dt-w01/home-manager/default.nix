@@ -55,6 +55,7 @@ in {
             "XDG_CACHE_HOME=${user-home}/.cache"
             "XDG_CONFIG_HOME=${user-home}/.config"
             "XDG_STATE_HOME=${user-home}/.local/state"
+            "CODEX_ARCHIVE_BACKTRACK_REMOTE=unix://${openai-socket}"
           ];
           ExecStartPre = [
             "${lib.getExe' pkgs.coreutils "mkdir"} -p ${socket-dir}"
@@ -85,6 +86,7 @@ in {
             "XDG_CACHE_HOME=${user-home}/.cache"
             "XDG_CONFIG_HOME=${user-home}/.config"
             "XDG_STATE_HOME=${user-home}/.local/state"
+            "CODEX_ARCHIVE_BACKTRACK_REMOTE=unix://${tca-socket}"
           ];
           ExecStartPre = [
             "${lib.getExe' pkgs.coreutils "mkdir"} -p ${socket-dir}"

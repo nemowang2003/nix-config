@@ -107,9 +107,13 @@ def parent_for_backtrack(
     return parent_id
 
 
-def archive_thread(codex: str, thread_id: str) -> None:
+def archive_thread(codex: str, thread_id: str, remote: str | None = None) -> None:
+    command = [codex, "archive"]
+    if remote is not None:
+        command.extend(["--remote", remote])
+    command.append(thread_id)
     result = subprocess.run(
-        [codex, "archive", thread_id],
+        command,
         capture_output=True,
         text=True,
         timeout=15,
@@ -124,6 +128,11 @@ def archive_thread(codex: str, thread_id: str) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--codex", default="codex", help="Codex executable")
+    parser.add_argument(
+        "--remote",
+        default=os.environ.get("CODEX_ARCHIVE_BACKTRACK_REMOTE"),
+        help="App-server endpoint that owns the forked thread",
+    )
     parser.add_argument(
         "--codex-home",
         type=Path,
@@ -142,7 +151,7 @@ def main() -> int:
             hook_input, args.codex_home / "state_5.sqlite"
         )
         if parent_id is not None:
-            archive_thread(args.codex, parent_id)
+            archive_thread(args.codex, parent_id, args.remote)
     except Exception as error:
         print(f"codex-archive-backtrack: {error}", file=sys.stderr)
         return 1
