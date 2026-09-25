@@ -17,10 +17,9 @@ Two loops feed it:
   through the local app-server (`thread/queue/add`), and streams that turn's
   agent text back as a WeCom stream message.
 
-The app-server control socket at
-$CODEX_HOME/app-server-control/app-server-control.sock speaks WebSocket over a
-Unix socket. Both that connection and the WeCom connection use the
-`websockets` library.
+The app-server control sockets are passed explicitly with `--default-socket`
+and optional `--provider-socket` flags. They speak WebSocket over Unix sockets;
+both those connections and the WeCom connection use the `websockets` library.
 
 Credentials (bot_id, secret) live in
 $XDG_CONFIG_HOME/codex-wecom-relay/wecom.json, materialized by sops-nix. Logs
@@ -80,12 +79,8 @@ class AppServerError(Exception):
 class AppServer:
     """Blocking JSON-RPC client for `codex app-server` over WebSocket."""
 
-    def __init__(self, path=None):
-        self.path = path or os.path.join(
-            os.environ.get("CODEX_HOME", os.path.expanduser("~/.codex")),
-            "app-server-control",
-            "app-server-control.sock",
-        )
+    def __init__(self, path):
+        self.path = path
         self._socket = None
         self._next_id = 0
         self._pending_notifications = deque()
@@ -226,7 +221,7 @@ def load_config(path):
 
 
 class Relay:
-    def __init__(self, config, ws_url, state_dir, log, provider_sockets=None):
+    def __init__(self, config, ws_url, state_dir, log, default_socket, provider_sockets=None):
         self.bot_id = config["bot_id"]
         self.secret = config["secret"]
         self.ws_url = ws_url
@@ -235,6 +230,7 @@ class Relay:
         self.tokens_path = os.path.join(state_dir, "tokens.json")
         self.last_push_path = os.path.join(state_dir, "last-push.json")
         self.log = log
+        self.default_socket = default_socket
         self.provider_sockets = provider_sockets or {}
         self._seq = 0
         self._seen = deque(maxlen=1000)
@@ -445,8 +441,8 @@ class Relay:
 
     def _app_for_thread(self, thread_id):
         if not self.provider_sockets:
-            return AppServer()
-        metadata = AppServer()
+            return AppServer(self.default_socket)
+        metadata = AppServer(self.default_socket)
         try:
             metadata.connect()
             metadata.initialize("codex-wecom-relay-router")
@@ -454,7 +450,7 @@ class Relay:
             provider = (result.get("thread") or {}).get("modelProvider")
         finally:
             metadata.close()
-        return AppServer(self.provider_sockets.get(provider))
+        return AppServer(self.provider_sockets.get(provider, self.default_socket))
 
     async def _run_turn(self, ws, callback, thread_id, text):
         stream_id = self._stream_id(callback)
@@ -691,6 +687,12 @@ def main(argv=None):
     )
     parser.add_argument("--log-level", default="INFO")
     parser.add_argument(
+        "--default-socket",
+        required=True,
+        metavar="PATH",
+        help="app-server Unix socket for the default model provider and thread metadata",
+    )
+    parser.add_argument(
         "--provider-socket",
         action="append",
         default=[],
@@ -720,7 +722,7 @@ def main(argv=None):
         log.error("cannot load config: %s", exc)
         return 1
 
-    relay = Relay(config, args.ws_url, args.state_dir, log, provider_sockets)
+    relay = Relay(config, args.ws_url, args.state_dir, log, args.default_socket, provider_sockets)
     try:
         return asyncio.run(relay.run())
     except KeyboardInterrupt:

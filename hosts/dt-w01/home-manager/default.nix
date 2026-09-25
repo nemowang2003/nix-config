@@ -7,7 +7,17 @@
 }: let
   user-home = config.home.homeDirectory;
   socket-dir = "${user-home}/.codex/app-server-control";
+  openai-socket = "${socket-dir}/openai.sock";
   tca-socket = "${socket-dir}/tca.sock";
+  codex-bin = lib.getExe pkgs.llm-agents.codex;
+  # Executables work in non-interactive shells too, unlike shell aliases.
+  # Tasks that need WeCom control must use one of these explicit endpoints.
+  codex-openai = pkgs.writeShellScriptBin "codex-openai" ''
+    exec ${codex-bin} --remote ${lib.escapeShellArg "unix://${openai-socket}"} "$@"
+  '';
+  codex-tca = pkgs.writeShellScriptBin "codex-tca" ''
+    exec ${codex-bin} -p tca --remote ${lib.escapeShellArg "unix://${tca-socket}"} "$@"
+  '';
 
   # `app-server` does not accept `-p`, so project the declarative TCA profile
   # into ordinary `-c dotted.path=value` overrides for its dedicated daemon.
@@ -24,7 +34,7 @@
 in {
   home.stateVersion = "25.11";
 
-  home.shellAliases.codex-tca = "codex -p tca --remote unix://${tca-socket}";
+  home.packages = [codex-openai codex-tca];
 
   # Both daemons are user-wide rather than system-wide: they own ~/.codex
   # (trust state, thread db, control socket) and this user's state, and exist
@@ -32,9 +42,9 @@ in {
   # hosts/dt-w01/nixos/default.nix, so they still start at boot and survive
   # WSL session teardown.
   systemd.user = {
-    services.codex-app-server = {
+    services.codex-openai-app-server = {
       Unit = {
-        Description = "Codex app-server daemon shared by the TUI and the reply relay";
+        Description = "Codex OpenAI app-server daemon";
       };
       Service = {
         Type = "simple";
@@ -49,13 +59,13 @@ in {
         ];
         ExecStartPre = [
           "${lib.getExe' pkgs.coreutils "mkdir"} -p ${socket-dir}"
-          "${lib.getExe' pkgs.coreutils "rm"} -f ${socket-dir}/app-server-control.sock"
+          "${lib.getExe' pkgs.coreutils "rm"} -f ${openai-socket}"
         ];
         ExecStart = lib.escapeShellArgs [
-          (lib.getExe pkgs.llm-agents.codex)
+          codex-bin
           "app-server"
           "--listen"
-          "unix://"
+          "unix://${openai-socket}"
         ];
         Restart = "on-failure";
         RestartSec = "2s";
@@ -85,7 +95,7 @@ in {
         ];
         ExecStart = lib.escapeShellArgs (
           [
-            (lib.getExe pkgs.llm-agents.codex)
+            codex-bin
             "app-server"
             "--listen"
             "unix://${tca-socket}"
@@ -107,8 +117,8 @@ in {
         # Same scope, so the original ordering intent survives the move: the
         # relay connects lazily per turn and reports a failed injection on its
         # own, so a weak `Wants` is enough.
-        After = ["codex-app-server.service"];
-        Wants = ["codex-app-server.service"];
+        After = ["codex-openai-app-server.service" "codex-tca-app-server.service"];
+        Wants = ["codex-openai-app-server.service" "codex-tca-app-server.service"];
       };
       Service = {
         Type = "simple";
@@ -125,6 +135,8 @@ in {
           (lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.codex-wecom-relay)
           "--config"
           "${config.xdg.configHome}/codex-wecom-relay/wecom.json"
+          "--default-socket"
+          openai-socket
           "--provider-socket"
           "tca=${tca-socket}"
         ];
