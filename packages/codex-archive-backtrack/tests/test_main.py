@@ -111,6 +111,28 @@ class ArchiveBacktrackTests(unittest.TestCase):
             check=False,
         )
 
+    @mock.patch.object(archive.subprocess, "run")
+    def test_archive_targets_forking_app_server(self, run):
+        run.return_value.returncode = 0
+
+        archive.archive_thread(
+            "/bin/codex", "parent", "unix:///home/nemo/.codex/openai.sock"
+        )
+
+        run.assert_called_once_with(
+            [
+                "/bin/codex",
+                "archive",
+                "--remote",
+                "unix:///home/nemo/.codex/openai.sock",
+                "parent",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
