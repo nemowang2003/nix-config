@@ -185,6 +185,9 @@ in {
       cmd.exe；并且不要给 powershell.exe 加 -NoProfile：用户 profile 会把输出
       编码设为 UTF-8，中文等非 ASCII 文本才能正确传递（输出被重定向时 profile
       里的交互式装饰会自动跳过）。
+
+      需要创建 symlink 时，使用 PowerShell 的
+      `[NativeLinks]::CreateSymbolicLink($source, $dest, 3)`。
     ''
   ];
 }
