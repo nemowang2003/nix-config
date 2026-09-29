@@ -58,7 +58,11 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
             relay_module.AppServer("/tmp/app-server.sock").connect()
 
         connect.assert_called_once_with(
-            "/tmp/app-server.sock", open_timeout=30, ping_interval=None, compression=None
+            "/tmp/app-server.sock",
+            open_timeout=30,
+            ping_interval=None,
+            compression=None,
+            max_size=None,
         )
 
     def test_app_server_subscribes_before_queueing_reply(self):

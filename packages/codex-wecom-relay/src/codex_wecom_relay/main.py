@@ -87,7 +87,12 @@ class AppServer:
 
     def connect(self):
         self._socket = unix_connect(
-            self.path, open_timeout=30, ping_interval=None, compression=None
+            self.path,
+            open_timeout=30,
+            ping_interval=None,
+            compression=None,
+            # thread/resume can return the full history, beyond the 1 MiB default.
+            max_size=None,
         )
 
     def close(self):
