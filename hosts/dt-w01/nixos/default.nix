@@ -1,6 +1,11 @@
 {cfg, ...}: {
   time.timeZone = "Asia/Shanghai";
 
+  nix.settings = {
+    substituters = ["https://cache.nixos-cuda.org/"];
+    trusted-public-keys = ["cache.nixos-cuda.org:74DUi4Ye579gUqzH4ziL9IyiJBlDpMRn9MBN8oNan9M="];
+  };
+
   systemd = {
     # codex-openai-app-server, codex-tca-app-server, and codex-wecom-relay are
     # home-manager user services (see
