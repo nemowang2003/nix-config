@@ -16,15 +16,20 @@
   # Tasks that need WeCom control must use one of these explicit endpoints.
   mk-codex-client = name: args:
     pkgs.writeShellScriptBin name ''
+      # The remote app-server executes commands with its systemd environment.
+      # Pass this shell's PATH as a thread config override so WSL executables
+      # and direnv-provided tools remain available in new or cold-resumed
+      # sessions. Codex ignores config overrides when rejoining a loaded thread.
+      path_toml=$(${lib.getExe pkgs.jq} -cn --arg path "$PATH" '$path')
       for arg in "$@"; do
         case "$arg" in
           --) break ;;
           -C | --cd | -C?* | --cd=*)
-            exec ${codex-bin} ${lib.escapeShellArgs args} "$@"
+            exec ${codex-bin} ${lib.escapeShellArgs args} -c "shell_environment_policy.set.PATH=$path_toml" "$@"
             ;;
         esac
       done
-      exec ${codex-bin} ${lib.escapeShellArgs args} -C "$PWD" "$@"
+      exec ${codex-bin} ${lib.escapeShellArgs args} -c "shell_environment_policy.set.PATH=$path_toml" -C "$PWD" "$@"
     '';
   codex-openai = mk-codex-client "codex-openai" ["--remote" "unix://${openai-socket}"];
   codex-tca = mk-codex-client "codex-tca" ["-p" "tca" "--remote" "unix://${tca-socket}"];
