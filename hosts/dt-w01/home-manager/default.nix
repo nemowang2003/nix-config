@@ -10,14 +10,24 @@
   openai-socket = "${socket-dir}/openai.sock";
   tca-socket = "${socket-dir}/tca.sock";
   codex-bin = lib.getExe pkgs.llm-agents.codex;
+  # Remote TUI only filters resume/fork sessions by cwd when --cd is explicit.
+  # Both sockets run on this host, so the caller's cwd is also the server cwd.
   # Executables work in non-interactive shells too, unlike shell aliases.
   # Tasks that need WeCom control must use one of these explicit endpoints.
-  codex-openai = pkgs.writeShellScriptBin "codex-openai" ''
-    exec ${codex-bin} --remote ${lib.escapeShellArg "unix://${openai-socket}"} "$@"
-  '';
-  codex-tca = pkgs.writeShellScriptBin "codex-tca" ''
-    exec ${codex-bin} -p tca --remote ${lib.escapeShellArg "unix://${tca-socket}"} "$@"
-  '';
+  mk-codex-client = name: args:
+    pkgs.writeShellScriptBin name ''
+      for arg in "$@"; do
+        case "$arg" in
+          --) break ;;
+          -C | --cd | -C?* | --cd=*)
+            exec ${codex-bin} ${lib.escapeShellArgs args} "$@"
+            ;;
+        esac
+      done
+      exec ${codex-bin} ${lib.escapeShellArgs args} -C "$PWD" "$@"
+    '';
+  codex-openai = mk-codex-client "codex-openai" ["--remote" "unix://${openai-socket}"];
+  codex-tca = mk-codex-client "codex-tca" ["-p" "tca" "--remote" "unix://${tca-socket}"];
 
   # `app-server` does not accept `-p`, so project the declarative TCA profile
   # into ordinary `-c dotted.path=value` overrides for its dedicated daemon.
@@ -35,6 +45,9 @@ in {
   home.stateVersion = "25.11";
 
   home.packages = [codex-openai codex-tca];
+  programs.zsh.initContent = lib.mkAfter ''
+    compdef _codex codex-openai codex-tca
+  '';
 
   # Both daemons are user-wide rather than system-wide: they own ~/.codex
   # (trust state, thread db, control socket) and this user's state, and exist
