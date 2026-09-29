@@ -44,7 +44,11 @@ in {
   systemd.user = {
     services = {
       codex-openai-app-server = {
-        Unit.Description = "Codex OpenAI app-server daemon";
+        Unit = {
+          Description = "Codex OpenAI app-server daemon";
+          Requires = ["sops-nix.service"];
+          After = ["sops-nix.service"];
+        };
         Service = {
           Type = "simple";
           WorkingDirectory = user-home;
@@ -77,7 +81,11 @@ in {
       };
 
       codex-tca-app-server = {
-        Unit.Description = "Codex TCA app-server daemon";
+        Unit = {
+          Description = "Codex TCA app-server daemon";
+          Requires = ["sops-nix.service"];
+          After = ["sops-nix.service"];
+        };
         Service = {
           Type = "simple";
           WorkingDirectory = user-home;
