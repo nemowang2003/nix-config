@@ -49,6 +49,14 @@
         application = self.packages.${pkgs.stdenv.hostPlatform.system}.codex-archive-backtrack;
         source = ../packages/codex-archive-backtrack;
       };
+
+      audio-transcribe-tests = pkgs.runCommand "audio-transcribe-tests" {} ''
+        export PYTHONDONTWRITEBYTECODE=1
+        cd ${../packages/audio-transcribe}
+        export PYTHONPATH="$PWD/src"
+        ${lib.getExe pkgs.python314} -m unittest discover -s tests
+        touch "$out"
+      '';
     };
   };
 }

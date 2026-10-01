@@ -1,11 +1,15 @@
 {
   pkgs,
   lib,
+  self,
   ...
 }: {
   imports = [./codex];
 
   home.stateVersion = "25.11";
+  home.packages = [
+    (self.packages.${pkgs.stdenv.hostPlatform.system}.audio-transcribe.override {cudaSupport = true;})
+  ];
 
   systemd.user = {
     services.skyland-auto-sign = {

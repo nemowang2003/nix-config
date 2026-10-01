@@ -1,0 +1,16 @@
+[project]
+name = "audio-transcribe"
+version = "0.1.0"
+description = "Transcribe audio files with faster-whisper"
+requires-python = ">=3.10"
+dependencies = ["faster-whisper>=1.2.1,<2"]
+
+[project.scripts]
+audio-transcribe = "audio_transcribe.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
