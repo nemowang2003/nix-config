@@ -49,6 +49,9 @@ in {
     enableMcpIntegration = true;
     package = pkgs.llm-agents.codex;
     contexts = [./AGENTS.md];
+    # Home Manager registers every entry under this directory as a skill,
+    # preserving each skill's references, assets, and agent metadata.
+    skills = ./skills;
     settings = {
       otel.metrics_exporter = "none";
       approval_policy = "never";

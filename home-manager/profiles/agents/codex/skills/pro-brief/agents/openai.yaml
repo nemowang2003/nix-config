@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pro 专家委托"
+  short_description: "通过多轮澄清与适度验证，将难题整理成可一次交付的 Pro 委托书"
+  default_prompt: "使用 $pro-brief，先澄清关键需求并做适度探索，再生成可直接复制给 ChatGPT Pro 的完整委托书。"
