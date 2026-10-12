@@ -33,17 +33,14 @@ import hashlib
 import json
 import logging
 import os
-import queue
 import re
 import secrets
 import sys
-import threading
 import time
 from collections import deque
 from pathlib import Path
 
-from websockets.asyncio.client import connect
-from websockets.sync.client import unix_connect
+from websockets.asyncio.client import connect, unix_connect
 
 WSS_URL = "wss://openws.work.weixin.qq.com"
 PING_INTERVAL = 30
@@ -77,7 +74,7 @@ class AppServerError(Exception):
 
 
 class AppServer:
-    """Blocking JSON-RPC client for `codex app-server` over WebSocket."""
+    """Async JSON-RPC client for `codex app-server` over WebSocket."""
 
     def __init__(self, path):
         self.path = path
@@ -85,8 +82,8 @@ class AppServer:
         self._next_id = 0
         self._pending_notifications = deque()
 
-    def connect(self):
-        self._socket = unix_connect(
+    async def connect(self):
+        self._socket = await unix_connect(
             self.path,
             open_timeout=30,
             ping_interval=None,
@@ -95,16 +92,16 @@ class AppServer:
             max_size=None,
         )
 
-    def close(self):
+    async def close(self):
         if self._socket is not None:
-            self._socket.close()
+            await self._socket.close()
             self._socket = None
 
-    def _send_json(self, message):
-        self._socket.send(json.dumps(message))
+    async def _send_json(self, message):
+        await self._socket.send(json.dumps(message))
 
-    def _receive_json(self):
-        message = self._socket.recv()
+    async def _receive_json(self):
+        message = await self._socket.recv()
         if not isinstance(message, str):
             raise AppServerError("app-server returned a binary WebSocket message")
         return json.loads(message)
@@ -113,11 +110,11 @@ class AppServer:
         self._next_id += 1
         return self._next_id
 
-    def request(self, method, params=None):
+    async def request(self, method, params=None):
         request_id = self._next_request_id()
-        self._send_json({"method": method, "id": request_id, "params": params or {}})
+        await self._send_json({"method": method, "id": request_id, "params": params or {}})
         while True:
-            message = self._receive_json()
+            message = await self._receive_json()
             if message.get("id") != request_id:
                 if "method" in message:
                     self._pending_notifications.append(message)
@@ -126,18 +123,18 @@ class AppServer:
                 raise AppServerError(f"{method} failed: {message['error']}")
             return message.get("result")
 
-    def notifications(self):
+    async def notifications(self):
         while True:
             message = (
                 self._pending_notifications.popleft()
                 if self._pending_notifications
-                else self._receive_json()
+                else await self._receive_json()
             )
             if "method" in message:
                 yield message
 
-    def initialize(self, client_name="codex-wecom-relay"):
-        self.request(
+    async def initialize(self, client_name="codex-wecom-relay"):
+        await self.request(
             "initialize",
             {
                 "clientInfo": {
@@ -148,19 +145,19 @@ class AppServer:
                 "capabilities": {"experimentalApi": True},
             },
         )
-        self._send_json({"method": "initialized", "params": {}})
+        await self._send_json({"method": "initialized", "params": {}})
 
-    def resume_thread(self, thread_id):
-        return self.request("thread/resume", {"threadId": thread_id})
+    async def resume_thread(self, thread_id):
+        return await self.request("thread/resume", {"threadId": thread_id})
 
-    def read_thread(self, thread_id):
-        return self.request("thread/read", {"threadId": thread_id, "includeTurns": False})
+    async def read_thread(self, thread_id):
+        return await self.request("thread/read", {"threadId": thread_id, "includeTurns": False})
 
-    def queue_turn(self, thread_id, text, client_message_id):
+    async def queue_turn(self, thread_id, text, client_message_id):
         # TUI Tab follow-ups live in the TUI, outside this server queue. If
         # both clients submit at the same idle boundary, the TUI's turn/start
         # can steer into a turn started from this queue. See README.md.
-        return self.request(
+        return await self.request(
             "thread/queue/add",
             {
                 "threadId": thread_id,
@@ -169,20 +166,20 @@ class AppServer:
             },
         )
 
-    def run_turn(self, thread_id, text):
+    async def run_turn(self, thread_id, text):
         """Queue a turn and stream the response tied to its user message."""
-        self.initialize()
+        await self.initialize()
         # A connection must subscribe to the thread even when another client
         # already loaded it. Otherwise queue/add can succeed while this
         # connection receives none of the turn's notifications.
-        self.resume_thread(thread_id)
+        await self.resume_thread(thread_id)
         client_message_id = secrets.token_hex(16)
-        queued = self.queue_turn(thread_id, text, client_message_id) or {}
+        queued = await self.queue_turn(thread_id, text, client_message_id) or {}
         if not (queued.get("queuedSubmission") or {}).get("id"):
             raise AppServerError("thread/queue/add returned no queued submission ID")
         yield ("queued", None)
         turn_id = None
-        for notification in self.notifications():
+        async for notification in self.notifications():
             method = notification.get("method")
             params = notification.get("params", {})
             if (
@@ -201,15 +198,6 @@ class AppServer:
                 status = params.get("status") or params.get("turn", {}).get("status")
                 yield ("done", status)
                 return
-
-
-def _turn_producer(app, thread_id, text, result_queue):
-    """Run the blocking app-server turn in a worker thread."""
-    try:
-        for item in app.run_turn(thread_id, text):
-            result_queue.put(item)
-    except Exception as exc:  # forwarded to the event loop
-        result_queue.put(("error", exc))
 
 
 def load_config(path):
@@ -444,17 +432,17 @@ class Relay:
         digest = hashlib.sha256(req_id.encode()).hexdigest()[:12]
         return f"s{digest}"
 
-    def _app_for_thread(self, thread_id):
+    async def _app_for_thread(self, thread_id):
         if not self.provider_sockets:
             return AppServer(self.default_socket)
         metadata = AppServer(self.default_socket)
         try:
-            metadata.connect()
-            metadata.initialize("codex-wecom-relay-router")
-            result = metadata.read_thread(thread_id) or {}
+            await metadata.connect()
+            await metadata.initialize("codex-wecom-relay-router")
+            result = await metadata.read_thread(thread_id) or {}
             provider = (result.get("thread") or {}).get("modelProvider")
         finally:
-            metadata.close()
+            await metadata.close()
         return AppServer(self.provider_sockets.get(provider, self.default_socket))
 
     async def _run_turn(self, ws, callback, thread_id, text):
@@ -465,24 +453,10 @@ class Relay:
         parts = []
         last_flush = 0.0
         status = None
-        result_queue = queue.Queue()
         try:
-            app = await asyncio.to_thread(self._app_for_thread, thread_id)
-            await asyncio.to_thread(app.connect)
-            producer = threading.Thread(
-                target=_turn_producer,
-                args=(app, thread_id, text, result_queue),
-                daemon=True,
-            )
-            producer.start()
-            while True:
-                try:
-                    kind, value = result_queue.get_nowait()
-                except queue.Empty:
-                    if not producer.is_alive() and result_queue.empty():
-                        break
-                    await asyncio.sleep(0.05)
-                    continue
+            app = await self._app_for_thread(thread_id)
+            await app.connect()
+            async for kind, value in app.run_turn(thread_id, text):
                 if kind == "delta":
                     parts.append(value)
                     now = time.monotonic()
@@ -497,8 +471,6 @@ class Relay:
                     submission_locked = False
                 elif kind == "done":
                     status = value
-                else:  # error
-                    raise value
             final = "".join(parts).strip()
             if not final:
                 final = f"(本轮完成，status={status})"
@@ -513,7 +485,7 @@ class Relay:
             if submission_locked:
                 self._submission_lock.release()
             if app is not None:
-                app.close()
+                await app.close()
 
     async def _handle_callback(self, ws, callback):
         body = callback.get("body", {})

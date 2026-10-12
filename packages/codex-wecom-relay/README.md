@@ -7,6 +7,10 @@ each one as a separate turn when the thread becomes idle. The relay matches
 the resulting user message by `clientUserMessageId` before streaming that
 turn's agent output to WeCom.
 
+Both WebSocket connections use asyncio. Replies are submitted in callback
+order; once a reply is queued, its response can stream alongside later replies.
+Cancelling a callback closes its app-server connection.
+
 ## dt-w01 provider commands
 
 Start a task that should accept WeCom replies with one of these commands:
@@ -21,9 +25,12 @@ The corresponding user services are `codex-openai-app-server.service` and
 uses `openai.sock` to read thread metadata and routes TCA threads to
 `tca.sock`.
 
-Plain `codex` and `codex -p tca` may connect to or start Codex's separate
-default app-server daemon. Use `codex-<provider>` when a task needs WeCom
-control so the TUI and relay share the same app-server process.
+Automatic startup of Codex's default app-server daemon is disabled. Plain
+`codex` and `codex -p tca` use an embedded server when no default daemon is
+already running; `--no-daemon` also bypasses an existing default daemon.
+These independent sessions inherit their launch environment. Use
+`codex-<provider>` when a task needs WeCom control so the TUI and relay share
+the same app-server process and its systemd environment.
 
 ## Queue limitation
 

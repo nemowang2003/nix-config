@@ -36,7 +36,6 @@ in {
     };
 
   home.packages = [
-    self.packages.${pkgs.stdenv.hostPlatform.system}.codex-archive-backtrack
     self.packages.${pkgs.stdenv.hostPlatform.system}.codex-notify
   ];
 
@@ -52,7 +51,6 @@ in {
     contexts = [./AGENTS.md];
     settings = {
       otel.metrics_exporter = "none";
-
       approval_policy = "never";
       sandbox_mode = "danger-full-access";
       tui.status_line = [
@@ -163,21 +161,6 @@ in {
     # teardown with a constant reason; stale route state can be removed with
     # `codex-notify cleanup`, using Codex's thread database as source of truth.
     hooks = {
-      SessionStart = [
-        {
-          matcher = "^fork$";
-          hooks = [
-            {
-              type = "command";
-              command = "${lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.codex-archive-backtrack} --codex ${lib.getExe pkgs.llm-agents.codex}";
-              # The helper gives its nested Codex process 15 seconds; leave
-              # enough outer-hook headroom for shutdown and state cleanup.
-              timeout = 20;
-              async = true;
-            }
-          ];
-        }
-      ];
       Stop = [
         {
           matcher = ".*";

@@ -56,7 +56,7 @@ The flake formatter is Alejandra, so `nix fmt` is equivalent to formatting the r
 
 ## Testing Guidelines
 
-Run the flake checks before switching. They include Python unit tests for `codex-notify`, `codex-wecom-relay`, and `codex-archive-backtrack`, plus evaluation of every declared host:
+Run the flake checks before switching. They include Python unit tests for `codex-notify`, `codex-wecom-relay`, and `audio-transcribe`, plus evaluation of every declared host:
 
 ```bash
 nix flake check

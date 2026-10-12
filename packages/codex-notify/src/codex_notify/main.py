@@ -48,23 +48,17 @@ FZF = os.environ.get("CODEX_NOTIFY_FZF") or shutil.which("fzf") or "fzf"
 
 DEFAULT_PROFILE = "me"
 
-state_dir = os.path.join(
-    os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")),
-    "codex-notify",
-)
-log_dir = os.path.join(
-    os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
-    "codex-notify",
-)
-config_dir = os.path.join(
-    os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
-    "codex-notify",
-)
+
+def xdg_dir(variable, fallback, name):
+    return os.path.join(os.environ.get(variable, os.path.expanduser(fallback)), name)
+
+
+state_dir = xdg_dir("XDG_STATE_HOME", "~/.local/state", "codex-notify")
+log_dir = xdg_dir("XDG_CACHE_HOME", "~/.cache", "codex-notify")
+config_dir = xdg_dir("XDG_CONFIG_HOME", "~/.config", "codex-notify")
 routes_file = os.path.join(config_dir, "routes.json")
 reply_outbox = os.path.join(
-    os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")),
-    "codex-wecom-relay",
-    "outbox.jsonl",
+    xdg_dir("XDG_STATE_HOME", "~/.local/state", "codex-wecom-relay"), "outbox.jsonl"
 )
 serverchan_outbox = os.path.join(state_dir, "serverchan-outbox")
 SERVERCHAN_RETRY_DELAYS = (2, 5)
@@ -99,13 +93,17 @@ def state_path(thread_id):
     return os.path.join(state_dir, f"{key_for(thread_id)}.json")
 
 
-def load_state(thread_id):
+def load_json(path):
     try:
-        with open(state_path(thread_id)) as handle:
+        with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
+
+
+def load_state(thread_id):
+    return load_json(state_path(thread_id))
 
 
 def save_state(thread_id, state):
@@ -166,12 +164,7 @@ def cmd_cleanup():
 
 
 def load_routes():
-    try:
-        with open(routes_file) as handle:
-            data = json.load(handle)
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return load_json(routes_file)
 
 
 def stdin_json():
@@ -369,7 +362,9 @@ def drain_serverchan():
                 if delay != SERVERCHAN_RETRY_DELAYS[-1]:
                     log(f"serverchan delivery failed thread={item.get('thread')} retrying")
             else:
-                log(f"serverchan delivery failed thread={item.get('thread')} retained for next hook")
+                log(
+                    f"serverchan delivery failed thread={item.get('thread')} retained for next hook"
+                )
     finally:
         os.close(fd)
 
