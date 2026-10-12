@@ -3,35 +3,19 @@
   lib,
   self,
   ...
-}: {
-  imports = [./codex];
+}: let
+  windows-path = lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.wsl-windows-path;
+in {
+  imports = self.lib.collect-nix-files ./profiles;
 
   home.stateVersion = "25.11";
-  home.packages = [
-    (self.packages.${pkgs.stdenv.hostPlatform.system}.audio-transcribe.override {cudaSupport = true;})
-  ];
 
-  systemd.user = {
-    services.skyland-auto-sign = {
-      Unit = {
-        Description = "Skyland Auto Sign Service";
-        After = ["network-online.target"];
-      };
-      Service = {
-        Type = "oneshot";
-        WorkingDirectory = "%h/skyland-auto-sign";
-        ExecStart = "${lib.getExe pkgs.uv} run --python ${lib.getExe pkgs.python314} src/main.py";
-      };
-      Install.WantedBy = ["default.target"];
-    };
-    timers.skyland-auto-sign = {
-      Unit.Description = "Run Skyland Auto Sign daily";
-      Timer = {
-        OnCalendar = "*-*-* 00:00:00";
-        Persistent = true;
-        Unit = "skyland-auto-sign.service";
-      };
-      Install.WantedBy = ["timers.target"];
-    };
-  };
+  # zshenv covers interactive SSH shells and non-interactive SSH commands.
+  # Child shells inherit the resolved PATH without querying Windows again.
+  programs.zsh.envExtra = lib.mkAfter ''
+    if [[ -z "''${NIX_CONFIG_WINDOWS_PATH_READY-}" ]]; then
+      export PATH="$PATH$(${windows-path})"
+      export NIX_CONFIG_WINDOWS_PATH_READY=1
+    fi
+  '';
 }

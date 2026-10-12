@@ -10,6 +10,13 @@
   openai-socket = "${socket-dir}/openai.sock";
   tca-socket = "${socket-dir}/tca.sock";
   codex-bin = lib.getExe pkgs.llm-agents.codex;
+  windows-path = lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.wsl-windows-path;
+  mk-app-server = name: args:
+    pkgs.writeShellScript name ''
+      # systemd user services do not inherit the Windows PATH injected by WSL.
+      export PATH="$PATH$(${windows-path})"
+      exec ${codex-bin} ${lib.escapeShellArgs args}
+    '';
   # Remote TUI only filters resume/fork sessions by cwd when --cd is explicit.
   # Both sockets run on this host, so the caller's cwd is also the server cwd.
   # Executables work in non-interactive shells too, unlike shell aliases.
@@ -81,12 +88,11 @@ in {
             "${lib.getExe' pkgs.coreutils "mkdir"} -p ${socket-dir}"
             "${lib.getExe' pkgs.coreutils "rm"} -f ${openai-socket}"
           ];
-          ExecStart = lib.escapeShellArgs [
-            codex-bin
+          ExecStart = "${mk-app-server "codex-openai-app-server" [
             "app-server"
             "--listen"
             "unix://${openai-socket}"
-          ];
+          ]}";
           Restart = "on-failure";
           RestartSec = "2s";
           KillSignal = "SIGINT";
@@ -116,15 +122,14 @@ in {
             "${lib.getExe' pkgs.coreutils "mkdir"} -p ${socket-dir}"
             "${lib.getExe' pkgs.coreutils "rm"} -f ${tca-socket}"
           ];
-          ExecStart = lib.escapeShellArgs (
+          ExecStart = "${mk-app-server "codex-tca-app-server" (
             [
-              codex-bin
               "app-server"
               "--listen"
               "unix://${tca-socket}"
             ]
             ++ lib.concatMap (override: ["-c" override]) (config-overrides [] config.my.codex.profiles.tca)
-          );
+          )}";
           Restart = "on-failure";
           RestartSec = "2s";
           KillSignal = "SIGINT";
