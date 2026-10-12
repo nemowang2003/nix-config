@@ -6,7 +6,6 @@
     "bitwarden"
     "obs"
     "obsidian"
-    "openvpn-connect"
     "qq"
     "steam"
     "tencent-meeting"
