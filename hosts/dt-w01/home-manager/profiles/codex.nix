@@ -34,7 +34,7 @@ in {
         "--codex-bin"
         (lib.getExe config.my.codex.package)
         "--codex-home"
-        "${user-home}/.codex"
+        "${user-home}/.codex-openai"
         "--codex-home"
         "${user-home}/.codex-tca"
       ];

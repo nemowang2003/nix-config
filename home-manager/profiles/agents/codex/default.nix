@@ -64,7 +64,7 @@ in {
 
   home.shellAliases."codex-list-sessions" = ''
     (
-      for codex_home in ${lib.escapeShellArgs ["${config.home.homeDirectory}/.codex" "${config.home.homeDirectory}/.codex-tca"]}; do
+      for codex_home in ${lib.escapeShellArgs ["${config.home.homeDirectory}/.codex-openai" "${config.home.homeDirectory}/.codex-tca"]}; do
         if [ -f "$codex_home/state_5.sqlite" ]; then
           printf '%s\n' "$codex_home"
           ${lib.getExe pkgs.sqlite} -readonly -header -column "$codex_home/state_5.sqlite" \
@@ -208,7 +208,7 @@ in {
     # exits 0 so it never blocks a turn. No SessionEnd hook: it fires on every
     # teardown with a constant reason; stale route state can be removed with
     # `codex-notify cleanup`, using Codex's thread database as source of truth.
-    hooks = mk-hooks "${config.home.homeDirectory}/.codex";
+    hooks = mk-hooks "${config.home.homeDirectory}/.codex-openai";
     tca-hooks = mk-hooks "${config.home.homeDirectory}/.codex-tca";
   };
 }

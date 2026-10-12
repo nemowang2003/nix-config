@@ -16,7 +16,7 @@ Cancelling a callback closes its app-server connection.
 Every host provides two commands, with the same Codex binary and completion:
 
 ```sh
-codex                # ~/.codex, official OpenAI configuration
+codex                # ~/.codex-openai, official OpenAI configuration
 codex-tca            # ~/.codex-tca, TCA gateway and model catalog
 ```
 

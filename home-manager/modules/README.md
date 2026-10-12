@@ -39,7 +39,11 @@
 `my.codex` 镜像上游的主要配置选项。`contexts` 接受文本或文件路径，
 组合后交给上游生成 instructions；`custom-instructions` 是 `context` 的兼容入口。
 
-每台主机同时生成官方 Codex home 和独立的 `~/.codex-tca`。`codex-tca`
+每台主机同时生成 `~/.codex-openai` 和独立的 `~/.codex-tca`。官方 `codex`
+启动器固定使用 `.codex-openai`，保留同一包的补全与辅助程序。旧 `.codex`
+在 activation 时整体迁移，保留登录、session 和状态，修正数据库内的历史路径，
+并备份修改前的数据库。迁移要求旧 app-server 已停止；不保留兼容 symlink，
+避免在 `$HOME` 工作时把另一边的用户配置当成项目配置。`codex-tca`
 设置 `CODEX_HOME` 后调用同一 Codex 二进制，并复用 `codex` 的 zsh 补全；
 不传 `--profile` 或 `--remote`，由 Codex 自动启动各自的 daemon。session、
 认证与模型偏好均不共享；instructions、用户技能、rules 和 MCP 声明用于两边。
@@ -53,7 +57,7 @@ OpenAI plugins/apps 配置仅用于官方 home。
 运行时数据；删除声明不会自动清除已有字段。`removed-paths`、
 `tca-removed-paths`、`profile-removed-paths` 分别清理官方配置、TCA 配置和
 普通 profile 的旧路径。首次 activation 从旧 `tca.config.toml` 保留模型偏好，
-随后把旧文件移到 TCA home 内作为备份；session 历史不迁移。
+随后把旧文件移到 TCA home 内作为备份；TCA session 历史不迁移。
 
 `CODEX_NOTIFY_HOMES` 登记两个 home，供通知维护命令、session 列表和补全
 查询两个独立数据库。dt-w01 的 relay 使用通知里的 home；旧 token 回退到

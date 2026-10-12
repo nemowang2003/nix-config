@@ -492,6 +492,24 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
                     await relay._app_for_thread("thread", "/tmp/unconfigured")
                 start.assert_not_called()
 
+    async def test_legacy_official_token_follows_home_migration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            old = root / ".codex"
+            new = root / ".codex-openai"
+            new.mkdir()
+            relay = relay_module.Relay(
+                {"bot_id": "bot", "secret": "secret"},
+                "wss://example.invalid",
+                directory,
+                logging.getLogger("test"),
+                [new],
+            )
+            self.assertEqual(relay._configured_home(str(old)), new)
+            old.mkdir()
+            with self.assertRaisesRegex(relay_module.AppServerError, "unconfigured"):
+                relay._configured_home(str(old))
+
     async def test_failed_daemon_start_reports_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             relay = self.make_relay(directory)

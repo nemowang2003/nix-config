@@ -126,7 +126,7 @@ def codex_db_paths():
         configured.split(os.pathsep)
         if configured
         else [
-            os.environ.get("CODEX_HOME", os.path.expanduser("~/.codex")),
+            os.environ.get("CODEX_HOME", os.path.expanduser("~/.codex-openai")),
             os.path.expanduser("~/.codex-tca"),
         ]
     )
@@ -478,7 +478,7 @@ def cmd_pick():
 def cmd_notify(args):
     title = args[1] if len(args) > 1 else "Codex"
     wecom_enabled = "--wecom-relay" in args[2:]
-    codex_home = os.environ.get("CODEX_HOME", os.path.expanduser("~/.codex"))
+    codex_home = os.environ.get("CODEX_HOME", os.path.expanduser("~/.codex-openai"))
     if "--codex-home" in args[2:]:
         codex_home = args[args.index("--codex-home", 2) + 1]
     codex_home = str(Path(codex_home).expanduser().resolve())

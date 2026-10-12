@@ -32,7 +32,7 @@ function _codex-notify {
               if [[ -n $CODEX_NOTIFY_HOMES ]]; then
                 homes=("${(@s.:.)CODEX_NOTIFY_HOMES}")
               else
-                homes=("${CODEX_HOME:-$HOME/.codex}" "$HOME/.codex-tca")
+                homes=("${CODEX_HOME:-$HOME/.codex-openai}" "$HOME/.codex-tca")
               fi
               local codex_home database
               for codex_home in "${homes[@]}"; do

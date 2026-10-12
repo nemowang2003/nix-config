@@ -112,15 +112,17 @@ in {
       if use-xdg-directories
       then "${xdg-config-home}/codex"
       else ".codex";
+    official-target = ".codex-openai";
+    official-home = "${config.home.homeDirectory}/${official-target}";
     config-target = "${config-dir}/config.toml";
-    config-path = "${config.home.homeDirectory}/${config-target}";
+    config-path = "${official-home}/config.toml";
     has-config-source = lib.hasAttrByPath [config-target "source"] config.home.file;
     config-source = lib.getAttrFromPath [config-target "source"] config.home.file;
 
     tca-target = ".codex-tca";
     tca-home = "${config.home.homeDirectory}/${tca-target}";
     tca-config-path = "${tca-home}/config.toml";
-    legacy-tca-profile = "${config.home.homeDirectory}/${config-dir}/tca.config.toml";
+    legacy-tca-profile = "${official-home}/tca.config.toml";
     codex-lib = import "${inputs.home-manager}/modules/programs/codex/lib.nix" {inherit lib pkgs;};
     # Copy individual declarative assets, never mutable directories or auth/state.
     common-files =
@@ -140,6 +142,26 @@ in {
         '.[0] * .[1] | delpaths(${builtins.toJSON cfg.tca-removed-paths})' \
         common.json tca.json | ${lib.getExe pkgs.yj} -jt > "$out"
     '';
+    codex-openai = pkgs.symlinkJoin {
+      name = "codex-openai-${lib.getVersion cfg.package}";
+      paths = [cfg.package];
+      meta = cfg.package.meta // {mainProgram = "codex";};
+      postBuild = ''
+        rm "$out/bin/codex"
+        cat > "$out/bin/codex" <<'SCRIPT'
+        #!${pkgs.runtimeShell}
+        export CODEX_HOME=${lib.escapeShellArg official-home}
+        exec ${lib.getExe cfg.package} "$@"
+        SCRIPT
+        chmod +x "$out/bin/codex"
+      '';
+    };
+    official-files =
+      common-files
+      ++ ["config.toml"]
+      ++ lib.optional (cfg.hooks != {}) "hooks.json"
+      ++ lib.optional (lib.isPath cfg.hooks && lib.pathIsDirectory cfg.hooks) "hooks"
+      ++ map (name: "${name}.config.toml") (lib.attrNames cfg.profiles);
     codex-tca = pkgs.writeShellScriptBin "codex-tca" ''
       export CODEX_HOME=${lib.escapeShellArg tca-home}
       exec ${lib.getExe cfg.package} "$@"
@@ -159,7 +181,7 @@ in {
       in
         lib.nameValuePair name {
           inherit target;
-          path = "${config.home.homeDirectory}/${target}";
+          path = "${official-home}/${name}.config.toml";
           source = toml-format.generate "codex-${name}-config" cfg.profiles.${name};
         })
       (lib.attrNames cfg.profiles)
@@ -170,7 +192,7 @@ in {
       source,
       removed-paths ? [],
     }:
-      lib.hm.dag.entryAfter ["writeBoundary"] (
+      lib.hm.dag.entryAfter ["migrate-codex-official-home"] (
         self.lib.mutable-config.mk-mutable-merge {
           inherit pkgs path source removed-paths;
           format = "toml";
@@ -186,7 +208,8 @@ in {
         {
           enable = true;
         }
-        // removeAttrs cfg ["enable" "custom-instructions" "contexts" "removed-paths" "tca-settings" "tca-hooks" "tca-removed-paths" "profile-removed-paths"];
+        // removeAttrs cfg ["enable" "custom-instructions" "contexts" "removed-paths" "tca-settings" "tca-hooks" "tca-removed-paths" "profile-removed-paths"]
+        // {package = codex-openai;};
 
       # Keep Codex config mutable because Codex writes trust/bookkeeping state to
       # config.toml at runtime. See:
@@ -197,11 +220,19 @@ in {
 
       home = {
         packages = [codex-tca];
-        sessionVariables.CODEX_NOTIFY_HOMES = "${config.home.homeDirectory}/${config-dir}:${tca-home}";
+        sessionVariables = {
+          CODEX_HOME = lib.mkForce official-home;
+          CODEX_NOTIFY_HOMES = "${official-home}:${tca-home}";
+        };
         file =
           {
             ${config-target}.enable = lib.mkForce false;
           }
+          // lib.listToAttrs (map (name:
+            lib.nameValuePair "${config-dir}/${name}" {
+              target = "${official-target}/${name}";
+            })
+          official-files)
           // lib.mapAttrs'
           (_: profile: lib.nameValuePair profile.target {enable = lib.mkForce false;})
           profile-files
@@ -242,7 +273,15 @@ in {
             };
           }
           // {
-            migrate-codex-tca-profile = lib.hm.dag.entryAfter ["writeBoundary"] ''
+            check-codex-official-migration = lib.hm.dag.entryBefore ["writeBoundary"] ''
+              ${lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.codex-home-migrate} --check \
+                ${lib.escapeShellArg "${config.home.homeDirectory}/${config-dir}"} ${lib.escapeShellArg official-home}
+            '';
+            migrate-codex-official-home = lib.hm.dag.entryBetween ["linkGeneration"] ["writeBoundary"] ''
+              $DRY_RUN_CMD ${lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.codex-home-migrate} \
+                ${lib.escapeShellArg "${config.home.homeDirectory}/${config-dir}"} ${lib.escapeShellArg official-home}
+            '';
+            migrate-codex-tca-profile = lib.hm.dag.entryAfter ["migrate-codex-official-home"] ''
               if [ ! -f ${lib.escapeShellArg tca-config-path} ] && [ -f ${lib.escapeShellArg legacy-tca-profile} ]; then
                 $DRY_RUN_CMD mkdir -p ${lib.escapeShellArg tca-home}
                 $DRY_RUN_CMD install -m 600 ${lib.escapeShellArg legacy-tca-profile} ${lib.escapeShellArg tca-config-path}

@@ -459,6 +459,10 @@ class Relay:
 
     def _configured_home(self, home):
         home = Path(home).expanduser().resolve()
+        if home.name == ".codex":
+            migrated = home.with_name(".codex-openai")
+            if migrated in self.codex_homes and not home.exists():
+                home = migrated
         if home not in self.codex_homes:
             raise AppServerError("notification refers to an unconfigured Codex home")
         return home

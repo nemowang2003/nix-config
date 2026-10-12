@@ -1,0 +1,12 @@
+[project]
+name = "codex-home-migrate"
+version = "0.1.0"
+description = "Move an inactive Codex home while preserving session paths"
+requires-python = ">=3.14,<3.15"
+
+[project.scripts]
+codex-home-migrate = "codex_home_migrate:main"
+
+[build-system]
+requires = ["uv_build>=0.11.28,<0.12"]
+build-backend = "uv_build"
