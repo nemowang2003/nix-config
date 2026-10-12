@@ -13,6 +13,15 @@
     pyproject-nix.url = "github:pyproject-nix/pyproject.nix";
     pyproject-nix.inputs.nixpkgs.follows = "nixpkgs";
 
+    uv2nix.url = "github:pyproject-nix/uv2nix";
+    uv2nix.inputs.nixpkgs.follows = "nixpkgs";
+    uv2nix.inputs.pyproject-nix.follows = "pyproject-nix";
+
+    pyproject-build-systems.url = "github:pyproject-nix/build-system-pkgs";
+    pyproject-build-systems.inputs.nixpkgs.follows = "nixpkgs";
+    pyproject-build-systems.inputs.pyproject-nix.follows = "pyproject-nix";
+    pyproject-build-systems.inputs.uv2nix.follows = "uv2nix";
+
     determinate.url = "github:DeterminateSystems/determinate";
     determinate.inputs.nixpkgs.follows = "nixpkgs";
 
@@ -48,14 +57,23 @@
 
     llm-agents.url = "github:numtide/llm-agents.nix";
 
-    audio-transcribe.url = "github:nemowang2003/audio-transcribe/v0.2.0";
+    audio-transcribe.url = "github:nemowang2003/audio-transcribe/v0.2.1";
     audio-transcribe.inputs.nixpkgs.follows = "nixpkgs";
+    audio-transcribe.inputs.pyproject-nix.follows = "pyproject-nix";
+    audio-transcribe.inputs.uv2nix.follows = "uv2nix";
+    audio-transcribe.inputs.pyproject-build-systems.follows = "pyproject-build-systems";
 
-    llama-on-demand.url = "github:nemowang2003/llama-on-demand/v0.1.1";
+    llama-on-demand.url = "github:nemowang2003/llama-on-demand/v0.1.2";
     llama-on-demand.inputs.nixpkgs.follows = "nixpkgs";
+    llama-on-demand.inputs.pyproject-nix.follows = "pyproject-nix";
+    llama-on-demand.inputs.uv2nix.follows = "uv2nix";
+    llama-on-demand.inputs.pyproject-build-systems.follows = "pyproject-build-systems";
 
-    ja2zh-srt.url = "github:nemowang2003/ja2zh-srt/v0.2.0";
+    ja2zh-srt.url = "github:nemowang2003/ja2zh-srt/v0.2.1";
     ja2zh-srt.inputs.nixpkgs.follows = "nixpkgs";
+    ja2zh-srt.inputs.pyproject-nix.follows = "pyproject-nix";
+    ja2zh-srt.inputs.uv2nix.follows = "uv2nix";
+    ja2zh-srt.inputs.pyproject-build-systems.follows = "pyproject-build-systems";
     ja2zh-srt.inputs.audio-transcribe.follows = "audio-transcribe";
 
     # dependencies

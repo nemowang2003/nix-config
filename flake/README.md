@@ -16,7 +16,7 @@ package 或配置字段，具体定义以链接中的代码为准。
 | `self.genericConfigurations.<host>` | [configurations.nix](configurations.nix) | generic Linux 的模块求值结果；`generic-rebuild` 使用其中的系统 activation package。 |
 | `self.homeConfigurations.<user>@<host>` | [configurations.nix](configurations.nix) | 每台注册主机的独立 Home Manager 配置，供 `home-manager switch` 和 `check-activation` 使用。 |
 | `self.packages.<system>` | [packages.nix](packages.nix)、[devshell.nix](devshell.nix) | 导出 [packages/](../packages/) 中的配置关联程序、独立工具 flake inputs 提供的程序，以及 devshell 生成的 `sops-yaml`；模块通过此入口引用 package。 |
-| `self.checks.<system>` | [checks.nix](checks.nix) | 自动收集 package 的 `passthru.tests`，检查 LLM 代理安装环境的导入与注册主机的配置求值；由 `nix flake check` 执行。 |
+| `self.checks.<system>` | [checks.nix](checks.nix) | 自动收集 package 的 `passthru.tests`，检查锁定转写环境的解码、LLM 代理安装导入与注册主机的配置求值；由 `nix flake check` 执行。 |
 | `self.devShells.<system>.default` | [devshell.nix](devshell.nix)、[formatter.nix](formatter.nix) | 开发环境、部署和检查命令；启动时设置 sops 密钥环境并生成 `.sops.yaml` 和 `ruff.toml`。 |
 | `self.formatter.<system>` | [formatter.nix](formatter.nix) | `nix fmt` 的入口，通过 treefmt 调度 Alejandra 和 Ruff。 |
 | `self.formatter-settings` | [formatter.nix](formatter.nix) | 共享格式化规则；其中的 `ruff` 同时供 nixago 和 Home Manager 全局 Ruff 配置使用。 |
@@ -43,6 +43,10 @@ nix eval .#checks.aarch64-darwin --apply builtins.attrNames --json
 # 查询指定主机的 Home Manager 配置
 nix eval '.#homeConfigurations."nemo@nb-d01".config.home.stateVersion'
 ```
+
+独立 Python 工具由各自的 `uv.lock` 经 uv2nix 构建；本 flake 统一声明
+`pyproject-nix`、`uv2nix` 和 `pyproject-build-systems` inputs，工具 inputs 通过
+`follows` 复用这些构建依赖。主机启用及 CUDA 选择仍在 host profiles 中。
 
 系统与 Home Manager 模块通过 special arguments 接收 `self`、`inputs`、
 `hostname` 和注册表中的 `cfg`。这些参数的传递路径见
