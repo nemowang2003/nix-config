@@ -1,0 +1,18 @@
+#compdef 2fa
+
+function _2fa {
+  local context state state_descr line
+  local -A opt_args
+  local -a sites
+  sites=("${XDG_CONFIG_HOME:-$HOME/.config}"/2fa/keys/*(N-.:t))
+
+  _arguments \
+    '(-h --help)'{-h,--help}'[show help]' \
+    '--list[list configured sites]' \
+    '--no-copy[only print the code]' \
+    '1:site:->site'
+
+  if [[ $state == site ]]; then
+    _values -w 'site' "${sites[@]}"
+  fi
+}
