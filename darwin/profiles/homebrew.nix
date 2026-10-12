@@ -3,7 +3,7 @@
   cfg,
   ...
 }: {
-  my.homebrew = {
+  my.nix-homebrew = {
     enable = true;
     enableRosetta = cfg.arch == "aarch64-darwin";
     user = cfg.user;
@@ -38,6 +38,7 @@
         "iina"
         "iterm2"
         "karabiner-elements"
+        "kde-connect"
         "mac-mouse-fix"
         "raycast"
         "tailscale-app"

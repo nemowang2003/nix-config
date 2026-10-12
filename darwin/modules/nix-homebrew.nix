@@ -6,7 +6,7 @@
   pkgs,
   ...
 }: let
-  cfg = config.my.homebrew;
+  cfg = config.my.nix-homebrew;
   upstream = options.nix-homebrew;
   mirrored-homebrew-options = self.lib.options.mirror-options {
     inherit upstream;
@@ -23,7 +23,7 @@
       "$out/share/zsh/site-functions/_brew"
   '';
 in {
-  options.my.homebrew =
+  options.my.nix-homebrew =
     mirrored-homebrew-options
     // {
       completions.enable = lib.mkEnableOption "Homebrew's Nix-managed shell completions";
