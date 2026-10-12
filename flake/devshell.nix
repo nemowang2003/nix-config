@@ -19,23 +19,10 @@
       data = self.sops.yaml;
       hook.mode = "copy";
     };
-    alejandra-format = pkgs.writeShellApplication {
-      name = "alejandra-format";
-      runtimeInputs = [pkgs.alejandra];
-      text = ''
-        if [[ $# -eq 0 ]]; then
-          set -- .
-        fi
-
-        exec alejandra "$@"
-      '';
-    };
     jq = lib.getExe pkgs.jq;
     gh = lib.getExe pkgs.gh;
     home-manager = lib.getExe pkgs.home-manager;
   in {
-    formatter = alejandra-format;
-
     packages.sops-yaml = sops-yaml.configFile;
 
     devshells.default = {

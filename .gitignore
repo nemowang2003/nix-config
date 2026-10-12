@@ -1,5 +1,7 @@
 .direnv
 __pycache__/
+.ruff_cache/
+ruff.toml
 .sops.yaml
 .public-ips.json
 .public-ips.sha256

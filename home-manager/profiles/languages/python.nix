@@ -1,4 +1,8 @@
-{pkgs, ...}: {
+{
+  pkgs,
+  self,
+  ...
+}: {
   my.lsp.servers.ty = {
     package = pkgs.ty;
     args = ["server"];
@@ -23,18 +27,7 @@
   programs = {
     ruff = {
       enable = true;
-      settings = {
-        line-length = 100;
-        lint = {
-          select = [
-            "E" # pycodestyle errors
-            "W" # pycodestyle warnings
-            "F" # pyflakes
-            "I" # isort
-          ];
-          ignore = ["E501"];
-        };
-      };
+      settings = self.formatter-settings.ruff;
     };
 
     ty = {
