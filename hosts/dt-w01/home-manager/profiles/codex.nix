@@ -6,174 +6,44 @@
   ...
 }: let
   user-home = config.home.homeDirectory;
-  socket-dir = "${user-home}/.codex/app-server-control";
-  openai-socket = "${socket-dir}/openai.sock";
-  tca-socket = "${socket-dir}/tca.sock";
-  codex-bin = lib.getExe pkgs.llm-agents.codex;
   windows-path = lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.wsl-windows-path;
-  mk-app-server = name: args:
-    pkgs.writeShellScript name ''
-      # systemd user services do not inherit the Windows PATH injected by WSL.
-      export PATH="$PATH$(${windows-path})"
-      exec ${codex-bin} ${lib.escapeShellArgs args}
-    '';
-  # Remote TUI only filters resume/fork sessions by cwd when --cd is explicit.
-  # Both sockets run on this host, so the caller's cwd is also the server cwd.
-  # Executables work in non-interactive shells too, unlike shell aliases.
-  # Tasks that need WeCom control must use one of these explicit endpoints.
-  mk-codex-client = name: args:
-    pkgs.writeShellScriptBin name ''
-      # The remote app-server executes commands with its systemd environment.
-      # Pass this shell's PATH as a thread config override so WSL executables
-      # and direnv-provided tools remain available in new or cold-resumed
-      # sessions. Codex ignores config overrides when rejoining a loaded thread.
-      path_toml=$(${lib.getExe pkgs.jq} -cn --arg path "$PATH" '$path')
-      for arg in "$@"; do
-        case "$arg" in
-          --) break ;;
-          -C | --cd | -C?* | --cd=*)
-            exec ${codex-bin} ${lib.escapeShellArgs args} -c "shell_environment_policy.set.PATH=$path_toml" "$@"
-            ;;
-        esac
-      done
-      exec ${codex-bin} ${lib.escapeShellArgs args} -c "shell_environment_policy.set.PATH=$path_toml" -C "$PWD" "$@"
-    '';
-  codex-openai = mk-codex-client "codex-openai" ["--remote" "unix://${openai-socket}"];
-  codex-tca = mk-codex-client "codex-tca" ["-p" "tca" "--remote" "unix://${tca-socket}"];
-
-  # `app-server` does not accept `-p`, so project the declarative TCA profile
-  # into ordinary `-c dotted.path=value` overrides for its dedicated daemon.
-  config-overrides = path: value:
-    if builtins.isAttrs value && !lib.isDerivation value
-    then lib.concatMap (name: config-overrides (path ++ [name]) value.${name}) (builtins.attrNames value)
-    else [
-      "${lib.concatStringsSep "." path}=${
-        if lib.isDerivation value
-        then builtins.toJSON "${value}"
-        else builtins.toJSON value
-      }"
-    ];
-in {
-  home.packages = [codex-openai codex-tca];
-  programs.zsh.initContent = lib.mkAfter ''
-    compdef _codex codex-openai codex-tca
+  relay = pkgs.writeShellScript "codex-wecom-relay" ''
+    export PATH="$PATH$(${windows-path})"
+    exec ${lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.codex-wecom-relay} "$@"
   '';
-
-  # Both daemons are user-wide rather than system-wide: they own ~/.codex
-  # (trust state, thread db, control socket) and this user's state, and exist
-  # to serve the same user's TUI. Linger is enabled in
-  # hosts/dt-w01/nixos/default.nix, so they still start at boot and survive
-  # WSL session teardown.
-  systemd.user = {
-    services = {
-      codex-openai-app-server = {
-        Unit = {
-          Description = "Codex OpenAI app-server daemon";
-          Requires = ["sops-nix.service"];
-          After = ["sops-nix.service"];
-        };
-        Service = {
-          Type = "simple";
-          WorkingDirectory = user-home;
-          # Materialized wholesale by home-manager's secrets module from
-          # secrets/common/env; KEY=VALUE data is natively parsable by systemd.
-          EnvironmentFile = "${config.xdg.configHome}/sops-nix/env/common";
-          Environment = [
-            "XDG_CACHE_HOME=${user-home}/.cache"
-            "XDG_CONFIG_HOME=${user-home}/.config"
-            "XDG_STATE_HOME=${user-home}/.local/state"
-          ];
-          ExecStartPre = [
-            "${lib.getExe' pkgs.coreutils "mkdir"} -p ${socket-dir}"
-            "${lib.getExe' pkgs.coreutils "rm"} -f ${openai-socket}"
-          ];
-          ExecStart = "${mk-app-server "codex-openai-app-server" [
-            "app-server"
-            "--listen"
-            "unix://${openai-socket}"
-          ]}";
-          Restart = "on-failure";
-          RestartSec = "2s";
-          KillSignal = "SIGINT";
-          TimeoutStopSec = "30s";
-          LimitNOFILE = "65536";
-        };
-        Install.WantedBy = ["default.target"];
-      };
-
-      codex-tca-app-server = {
-        Unit = {
-          Description = "Codex TCA app-server daemon";
-          Requires = ["sops-nix.service"];
-          After = ["sops-nix.service"];
-        };
-        Service = {
-          Type = "simple";
-          WorkingDirectory = user-home;
-          EnvironmentFile = "${config.xdg.configHome}/sops-nix/env/common";
-          Environment = [
-            "XDG_CACHE_HOME=${user-home}/.cache"
-            "XDG_CONFIG_HOME=${user-home}/.config"
-            "XDG_STATE_HOME=${user-home}/.local/state"
-          ];
-          ExecStartPre = [
-            "${lib.getExe' pkgs.coreutils "mkdir"} -p ${socket-dir}"
-            "${lib.getExe' pkgs.coreutils "rm"} -f ${tca-socket}"
-          ];
-          ExecStart = "${mk-app-server "codex-tca-app-server" (
-            [
-              "app-server"
-              "--listen"
-              "unix://${tca-socket}"
-            ]
-            ++ lib.concatMap (override: ["-c" override]) (config-overrides [] config.my.codex.profiles.tca)
-          )}";
-          Restart = "on-failure";
-          RestartSec = "2s";
-          KillSignal = "SIGINT";
-          TimeoutStopSec = "30s";
-          LimitNOFILE = "65536";
-        };
-        Install.WantedBy = ["default.target"];
-      };
-
-      codex-wecom-relay = {
-        Unit = {
-          Description = "企业微信智能机器人长连接：投递 codex-notify 路由好的通知，并把用户回复注入本地 app-server";
-          # Same scope, so the original ordering intent survives the move: the
-          # relay connects lazily per turn and reports a failed injection on its
-          # own, so a weak `Wants` is enough.
-          After = ["codex-openai-app-server.service" "codex-tca-app-server.service"];
-          Wants = ["codex-openai-app-server.service" "codex-tca-app-server.service"];
-        };
-        Service = {
-          Type = "simple";
-          WorkingDirectory = user-home;
-          Environment = [
-            "XDG_CACHE_HOME=${user-home}/.cache"
-            "XDG_CONFIG_HOME=${user-home}/.config"
-            "XDG_STATE_HOME=${user-home}/.local/state"
-          ];
-          # Credentials materialized by home-manager's secrets module; the path
-          # matches my.secrets.files."wecom" in
-          # home-manager/profiles/agents/codex/default.nix.
-          ExecStart = lib.escapeShellArgs [
-            (lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.codex-wecom-relay)
-            "--config"
-            "${config.xdg.configHome}/codex-wecom-relay/wecom.json"
-            "--default-socket"
-            openai-socket
-            "--provider-socket"
-            "tca=${tca-socket}"
-          ];
-          Restart = "on-failure";
-          RestartSec = "5s";
-          KillSignal = "SIGINT";
-          TimeoutStopSec = "10s";
-        };
-        Install.WantedBy = ["default.target"];
-      };
+in {
+  systemd.user.services.codex-wecom-relay = {
+    Unit = {
+      Description = "企业微信智能机器人长连接：投递 Codex 通知，并把回复注入对应 Codex home 的 daemon";
+      Requires = ["sops-nix.service"];
+      After = ["sops-nix.service"];
     };
+    Service = {
+      Type = "simple";
+      WorkingDirectory = user-home;
+      EnvironmentFile = "${config.xdg.configHome}/sops-nix/env/common";
+      Environment = [
+        "XDG_CACHE_HOME=${config.xdg.cacheHome}"
+        "XDG_CONFIG_HOME=${config.xdg.configHome}"
+        "XDG_STATE_HOME=${config.xdg.stateHome}"
+      ];
+      ExecStart = lib.escapeShellArgs [
+        relay
+        "--config"
+        "${config.xdg.configHome}/codex-wecom-relay/wecom.json"
+        "--codex-bin"
+        (lib.getExe config.my.codex.package)
+        "--codex-home"
+        "${user-home}/.codex"
+        "--codex-home"
+        "${user-home}/.codex-tca"
+      ];
+      Restart = "on-failure";
+      RestartSec = "5s";
+      KillSignal = "SIGINT";
+      TimeoutStopSec = "10s";
+    };
+    Install.WantedBy = ["default.target"];
   };
 
   my.codex.contexts = lib.mkAfter [

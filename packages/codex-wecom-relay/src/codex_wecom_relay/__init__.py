@@ -17,9 +17,11 @@ Two loops feed it:
   through the local app-server (`thread/queue/add`), and streams that turn's
   agent text back as a WeCom stream message.
 
-The app-server control sockets are passed explicitly with `--default-socket`
-and optional `--provider-socket` flags. They speak WebSocket over Unix sockets;
-both those connections and the WeCom connection use the `websockets` library.
+Independent Codex homes are passed with repeated `--codex-home` flags. Reply
+hooks record the owning home in each notification and reply token. The relay
+starts/reuses that home's managed daemon via `--codex-bin`; older tokens fall
+back to read-only thread database lookup. App-server connections speak WebSocket
+over Unix sockets using the `websockets` library.
 
 Credentials (bot_id, secret) live in
 $XDG_CONFIG_HOME/codex-wecom-relay/wecom.json, materialized by sops-nix. Logs
@@ -35,9 +37,11 @@ import logging
 import os
 import re
 import secrets
+import sqlite3
 import sys
 import time
 from collections import deque
+from contextlib import closing
 from pathlib import Path
 
 from websockets.asyncio.client import connect, unix_connect
@@ -218,7 +222,7 @@ def load_config(path):
 
 
 class Relay:
-    def __init__(self, config, ws_url, state_dir, log, default_socket, provider_sockets=None):
+    def __init__(self, config, ws_url, state_dir, log, codex_homes, codex_bin="codex"):
         self.bot_id = config["bot_id"]
         self.secret = config["secret"]
         self.ws_url = ws_url
@@ -227,15 +231,17 @@ class Relay:
         self.tokens_path = os.path.join(state_dir, "tokens.json")
         self.last_push_path = os.path.join(state_dir, "last-push.json")
         self.log = log
-        self.default_socket = default_socket
-        self.provider_sockets = provider_sockets or {}
+        self.codex_homes = tuple(
+            dict.fromkeys(Path(home).expanduser().resolve() for home in codex_homes)
+        )
+        self.codex_bin = codex_bin
         self._seq = 0
         self._seen = deque(maxlen=1000)
         self._tokens = {}
         self._last_push = {}
         self._pending_commands = {}
         # Preserve WeCom callback order while each app-server connection
-        # performs provider lookup and queue/add. Streaming may then overlap.
+        # finds the owning home and performs queue/add. Streaming may then overlap.
         self._submission_lock = asyncio.Lock()
         self._load_tokens()
         self._load_last_push()
@@ -319,12 +325,14 @@ class Relay:
             },
         )
 
-    def _new_token(self, thread_id):
+    def _new_token(self, thread_id, codex_home=None):
         while True:
             token = secrets.token_hex(4)
             if token not in self._tokens:
                 break
         self._tokens[token] = {"thread": thread_id, "created": int(time.time())}
+        if codex_home:
+            self._tokens[token]["codex_home"] = str(self._configured_home(codex_home))
         self._save_tokens()
         return token
 
@@ -358,9 +366,22 @@ class Relay:
                 self._checkpoint_outbox(tmp, lines)
                 continue
             token = entry.get("token") or ""
+            codex_home = entry.get("codex_home")
+            if codex_home:
+                try:
+                    codex_home = str(self._configured_home(codex_home))
+                except AppServerError:
+                    self.log.warning("outbox entry skipped: unconfigured Codex home")
+                    lines.pop(0)
+                    self._checkpoint_outbox(tmp, lines)
+                    continue
             token_entry = self._tokens.get(token)
-            if token_entry is None or token_entry.get("thread") != thread_id:
-                token = self._new_token(thread_id)
+            if (
+                token_entry is None
+                or token_entry.get("thread") != thread_id
+                or token_entry.get("codex_home") != codex_home
+            ):
+                token = self._new_token(thread_id, codex_home)
                 entry["token"] = token
                 lines[0] = json.dumps(entry) + "\n"
                 self._checkpoint_outbox(tmp, lines)
@@ -436,20 +457,73 @@ class Relay:
         digest = hashlib.sha256(req_id.encode()).hexdigest()[:12]
         return f"s{digest}"
 
-    async def _app_for_thread(self, thread_id):
-        if not self.provider_sockets:
-            return AppServer(self.default_socket)
-        metadata = AppServer(self.default_socket)
-        try:
-            await metadata.connect()
-            await metadata.initialize("codex-wecom-relay-router")
-            result = await metadata.read_thread(thread_id) or {}
-            provider = (result.get("thread") or {}).get("modelProvider")
-        finally:
-            await metadata.close()
-        return AppServer(self.provider_sockets.get(provider, self.default_socket))
+    def _configured_home(self, home):
+        home = Path(home).expanduser().resolve()
+        if home not in self.codex_homes:
+            raise AppServerError("notification refers to an unconfigured Codex home")
+        return home
 
-    async def _run_turn(self, ws, callback, thread_id, text):
+    def _home_for_thread(self, thread_id):
+        owners = []
+        for home in self.codex_homes:
+            database = home / "state_5.sqlite"
+            if not database.exists():
+                continue
+            try:
+                with closing(
+                    sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
+                ) as connection:
+                    found = connection.execute(
+                        "SELECT 1 FROM threads WHERE id = ?", (thread_id,)
+                    ).fetchone()
+            except sqlite3.Error as error:
+                raise AppServerError(f"cannot read Codex thread database: {database}") from error
+            if found:
+                owners.append(home)
+        if not owners:
+            raise AppServerError("session not found in the configured Codex homes")
+        if len(owners) != 1:
+            raise AppServerError(
+                "session exists in multiple Codex homes; refusing ambiguous routing"
+            )
+        return owners[0]
+
+    async def _app_for_thread(self, thread_id, codex_home=None):
+        # New hooks bind the reply token to a home. Query databases only for
+        # notifications and tokens produced before that field was introduced.
+        home = (
+            self._configured_home(codex_home)
+            if codex_home
+            else await asyncio.to_thread(self._home_for_thread, thread_id)
+        )
+        environment = os.environ.copy()
+        environment["CODEX_HOME"] = str(home)
+        process = await asyncio.create_subprocess_exec(
+            self.codex_bin,
+            "app-server",
+            "daemon",
+            "start",
+            env=environment,
+            cwd=home,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, _stderr = await asyncio.wait_for(process.communicate(), timeout=60)
+        except BaseException:
+            if process.returncode is None:
+                process.kill()
+            await process.wait()
+            raise
+        if process.returncode != 0:
+            raise AppServerError("could not start the owning Codex daemon")
+        try:
+            socket_path = json.loads(stdout)["socketPath"]
+        except (ValueError, KeyError, TypeError) as error:
+            raise AppServerError("Codex daemon returned no control socket") from error
+        return AppServer(socket_path)
+
+    async def _run_turn(self, ws, callback, thread_id, text, codex_home=None):
         stream_id = self._stream_id(callback)
         await self._submission_lock.acquire()
         submission_locked = True
@@ -458,7 +532,7 @@ class Relay:
         last_flush = 0.0
         status = None
         try:
-            app = await self._app_for_thread(thread_id)
+            app = await self._app_for_thread(thread_id, codex_home)
             await app.connect()
             async for kind, value in app.run_turn(thread_id, text):
                 if kind == "delta":
@@ -512,9 +586,10 @@ class Relay:
                 token = entry["token"]
                 self.log.info("reply fallback: last push for chatid=%s", userid)
         if token and token in self._tokens:
-            thread_id = self._tokens[token]["thread"]
+            entry = self._tokens[token]
+            thread_id = entry["thread"]
             self.log.info("reply token=r#%s thread=%s", token, thread_id)
-            await self._run_turn(ws, callback, thread_id, text)
+            await self._run_turn(ws, callback, thread_id, text, entry.get("codex_home"))
         else:
             await self._respond_markdown(
                 ws,
@@ -668,24 +743,19 @@ def main(argv=None):
     )
     parser.add_argument("--log-level", default="INFO")
     parser.add_argument(
-        "--default-socket",
+        "--codex-home",
+        action="append",
         required=True,
         metavar="PATH",
-        help="app-server Unix socket for the default model provider and thread metadata",
+        help="independent Codex home to search for sessions (repeatable)",
     )
     parser.add_argument(
-        "--provider-socket",
-        action="append",
-        default=[],
-        metavar="PROVIDER=PATH",
-        help="route threads from PROVIDER to a dedicated app-server Unix socket",
+        "--codex-bin",
+        default="codex",
+        metavar="PATH",
+        help="Codex executable used to start the owning home's daemon",
     )
     args = parser.parse_args(argv)
-
-    try:
-        provider_sockets = dict(item.split("=", 1) for item in args.provider_socket)
-    except ValueError:
-        parser.error("--provider-socket must be PROVIDER=PATH")
 
     logging.basicConfig(
         level=args.log_level,
@@ -703,7 +773,7 @@ def main(argv=None):
         log.error("cannot load config: %s", exc)
         return 1
 
-    relay = Relay(config, args.ws_url, args.state_dir, log, args.default_socket, provider_sockets)
+    relay = Relay(config, args.ws_url, args.state_dir, log, args.codex_home, args.codex_bin)
     try:
         return asyncio.run(relay.run())
     except KeyboardInterrupt:

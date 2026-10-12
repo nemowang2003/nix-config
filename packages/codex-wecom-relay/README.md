@@ -11,26 +11,36 @@ Both WebSocket connections use asyncio. Replies are submitted in callback
 order; once a reply is queued, its response can stream alongside later replies.
 Cancelling a callback closes its app-server connection.
 
-## dt-w01 provider commands
+## Independent Codex homes
 
-Start a task that should accept WeCom replies with one of these commands:
+Every host provides two commands, with the same Codex binary and completion:
 
 ```sh
-codex-openai          # connects to ~/.codex/app-server-control/openai.sock
-codex-tca             # uses the tca profile and connects to ~/.codex/app-server-control/tca.sock
+codex                # ~/.codex, official OpenAI configuration
+codex-tca            # ~/.codex-tca, TCA gateway and model catalog
 ```
 
-The corresponding user services are `codex-openai-app-server.service` and
-`codex-tca-app-server.service`. Both listen on their named sockets. The relay
-uses `openai.sock` to read thread metadata and routes TCA threads to
-`tca.sock`.
+Codex automatically starts or reuses a daemon for each home. The two homes
+keep independent configuration, authentication, model defaults and sessions.
+`codex-tca` sets `CODEX_HOME`; it does not pass `--profile` or `--remote`.
+No app-server systemd services are installed.
 
-Automatic startup of Codex's default app-server daemon is disabled. Plain
-`codex` and `codex -p tca` use an embedded server when no default daemon is
-already running; `--no-daemon` also bypasses an existing default daemon.
-These independent sessions inherit their launch environment. Use
-`codex-<provider>` when a task needs WeCom control so the TUI and relay share
-the same app-server process and its systemd environment.
+Each home's Stop hook passes its own `--codex-home` to `codex-notify`. The
+outbox entry and persisted reply token retain that home. The relay validates
+it against the homes supplied with repeated `--codex-home` arguments, then
+runs `CODEX_HOME=<owning-home> <codex-bin> app-server daemon start` before
+connecting to the returned Unix socket. A missing daemon for the other home
+has no effect. Existing tokens without a home use read-only database lookup;
+missing or ambiguous thread ownership is reported instead of guessed.
+
+Only the relay remains a dt-w01 systemd user service. Its environment includes
+the shared sops environment and Windows PATH so daemons first started by a
+WeCom reply can use the TCA credentials and WSL tools. A running daemon keeps
+its existing environment.
+
+The first Home Manager activation preserves the old TCA profile's model
+preferences in the new home and archives the old profile there. Existing
+session databases and histories are not moved between homes.
 
 ## Queue limitation
 

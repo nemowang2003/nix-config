@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | `my.lsp.servers` | [lsp.nix](lsp.nix) | 按 ID 登记 LSP 的 package/command、参数及是否向 PATH 和 agent 暴露；由 `my.languages` 和 agent profiles 消费。启用的条目必须提供 package 或 command。 |
 | `my.languages` | [languages.nix](languages.nix) | 按语言登记扩展名、项目根标志、LSP 引用和 formatter；生成 Helix 的语言配置，并供 agent profiles 选择 LSP。引用的 LSP 必须存在且启用。 |
-| `my.codex` | [codex.nix](codex.nix) | 包装上游 `programs.codex`，组合 instructions，并在 activation 时合并可写的主配置和 profile 文件；由 [Codex profile](../profiles/agents/codex/default.nix) 和主机覆盖使用。 |
+| `my.codex` | [codex.nix](codex.nix) | 包装上游 `programs.codex`，生成独立的官方与 TCA home，组合 instructions，并在 activation 时合并可写配置；由 [Codex profile](../profiles/agents/codex/default.nix) 和主机覆盖使用。 |
 | `my.secrets` | [secrets.nix](secrets.nix) | `files` 登记整文件或 keyed secret 的来源和落地路径；`twofa` 保留账号形状的 2FA 文件登记。模块还自动 materialize 可用的分组 env 文件，供 zsh 导出环境变量。 |
 | `my.skland` | [skland.nix](skland.nix) | Skland 自动签到的选项骨架。目前启用仅产生警告，尚未实现 service、timer、secret 渲染或 credential 合并，不能据此部署签到任务。 |
 
@@ -36,12 +36,28 @@
 
 ## Codex 的可写配置
 
-`my.codex` 镜像上游的主要配置选项，另提供 `contexts` 和
-`profile-removed-paths`。`contexts` 接受文本或文件路径，组合后交给上游
-生成 instructions。主 TOML 与 profile TOML 在 activation 时逐字段合并，
-保留声明中未提及的运行时数据；删除声明不会自动清除已有字段。
-`profile-removed-paths` 可显式删除指定 profile 的旧 TOML 路径。
-`custom-instructions` 是重命名为 `context` 的兼容入口。
+`my.codex` 镜像上游的主要配置选项。`contexts` 接受文本或文件路径，
+组合后交给上游生成 instructions；`custom-instructions` 是 `context` 的兼容入口。
+
+每台主机同时生成官方 Codex home 和独立的 `~/.codex-tca`。`codex-tca`
+设置 `CODEX_HOME` 后调用同一 Codex 二进制，并复用 `codex` 的 zsh 补全；
+不传 `--profile` 或 `--remote`，由 Codex 自动启动各自的 daemon。session、
+认证与模型偏好均不共享；instructions、用户技能、rules 和 MCP 声明用于两边。
+TCA 配置由上游渲染的声明配置与 `tca-settings` 合并，去掉
+`tca-removed-paths` 指定的官方专属字段；`tca-hooks` 可单独声明 TCA hooks。
+共享 [Codex profile](../profiles/agents/codex/default.nix) 为两边 Stop hooks
+传递不同的 `--codex-home`，通知与企业微信回复 token 因此能直接识别所属 daemon。
+OpenAI plugins/apps 配置仅用于官方 home。
+
+主 TOML 与 profile TOML 在 activation 时逐字段合并，保留声明中未提及的
+运行时数据；删除声明不会自动清除已有字段。`removed-paths`、
+`tca-removed-paths`、`profile-removed-paths` 分别清理官方配置、TCA 配置和
+普通 profile 的旧路径。首次 activation 从旧 `tca.config.toml` 保留模型偏好，
+随后把旧文件移到 TCA home 内作为备份；session 历史不迁移。
+
+`CODEX_NOTIFY_HOMES` 登记两个 home，供通知维护命令、session 列表和补全
+查询两个独立数据库。dt-w01 的 relay 使用通知里的 home；旧 token 回退到
+数据库查找。回复时只启动或复用所属 home 的 daemon，无需 app-server systemd 服务。
 
 ```nix
 {
@@ -49,6 +65,7 @@
     enable = true;
     contexts = ["Use the project's development environment."];
     settings.tui.status_line = ["current-dir"];
+    tca-settings.model_provider = "tca";
   };
 }
 ```

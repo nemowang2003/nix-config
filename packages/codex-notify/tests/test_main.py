@@ -1,4 +1,6 @@
 import json
+import os
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -124,6 +126,71 @@ class NotifyTests(unittest.TestCase):
 
         fork.assert_called_once_with()
         send_serverchan.assert_not_called()
+
+    def make_database(self, home, thread_id):
+        home.mkdir()
+        connection = sqlite3.connect(home / "state_5.sqlite")
+        try:
+            connection.execute("CREATE TABLE threads (id TEXT, title TEXT, updated_at INTEGER)")
+            connection.execute("INSERT INTO threads VALUES (?, ?, ?)", (thread_id, "test", 1))
+            connection.commit()
+        finally:
+            connection.close()
+
+    def test_cleanup_preserves_routes_from_both_homes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            homes = [root / "official", root / "tca"]
+            for home, thread in zip(homes, ["official-thread", "tca-thread"]):
+                self.make_database(home, thread)
+            with (
+                mock.patch.dict(
+                    os.environ, {"CODEX_NOTIFY_HOMES": os.pathsep.join(map(str, homes))}
+                ),
+                mock.patch.object(notify, "state_dir", str(root / "routes")),
+                mock.patch.object(notify, "log"),
+            ):
+                for thread in ["official-thread", "tca-thread", "deleted"]:
+                    notify.save_state(thread, {"profile": "me"})
+                notify.cleanup_orphaned_state()
+                self.assertTrue(Path(notify.state_path("official-thread")).exists())
+                self.assertTrue(Path(notify.state_path("tca-thread")).exists())
+                self.assertFalse(Path(notify.state_path("deleted")).exists())
+
+    def test_unreadable_database_prevents_route_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            official = root / "official"
+            self.make_database(official, "thread")
+            broken = root / "broken"
+            broken.mkdir()
+            (broken / "state_5.sqlite").write_text("invalid sqlite")
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {"CODEX_NOTIFY_HOMES": os.pathsep.join(map(str, [official, broken]))},
+                ),
+                mock.patch.object(notify, "state_dir", str(root / "routes")),
+            ):
+                notify.save_state("unknown", {"profile": "me"})
+                notify.cleanup_orphaned_state()
+                self.assertTrue(Path(notify.state_path("unknown")).exists())
+
+    def test_hook_argument_identifies_home_in_wecom_notification(self):
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(notify, "stdin_json", return_value={"session_id": "thread"}),
+            mock.patch.object(notify, "load_state", return_value={}),
+            mock.patch.object(notify, "load_routes", return_value={"me": {"wecom": "user"}}),
+            mock.patch.object(notify, "reply_outbox", str(Path(directory) / "outbox")),
+            mock.patch.object(notify, "dispatch_notifications"),
+            mock.patch.object(notify, "log"),
+        ):
+            home = str(Path(directory) / "tca")
+            notify.cmd_notify(["notify", "Codex", "--codex-home", home, "--wecom-relay"])
+            entry = json.loads(Path(notify.reply_outbox).read_text())
+            self.assertEqual(entry["codex_home"], home)
+            self.assertEqual(entry["thread"], "thread")
 
 
 if __name__ == "__main__":

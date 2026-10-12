@@ -1,10 +1,11 @@
 import asyncio
 import json
 import logging
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import codex_wecom_relay as relay_module
 from websockets.asyncio.server import unix_serve
@@ -56,7 +57,7 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
             "wss://example.invalid",
             directory,
             logging.getLogger("test"),
-            "/tmp/openai.sock",
+            [str(Path(directory) / "official"), str(Path(directory) / "tca")],
         )
 
     async def test_app_server_unix_handshake_disables_compression(self):
@@ -383,33 +384,145 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
         callback = {"headers": {"req_id": "request-id"}}
         self.assertEqual(relay._stream_id(callback), relay._stream_id(callback))
 
-    async def test_thread_provider_selects_dedicated_socket(self):
-        relay = relay_module.Relay(
-            {"bot_id": "bot", "secret": "secret"},
-            "wss://example.invalid",
-            "/tmp/unused-codex-wecom-relay-test",
-            logging.getLogger("test"),
-            "/tmp/openai.sock",
-            {"tca": "/tmp/tca.sock"},
+    def make_database(self, home, thread_id):
+        home.mkdir(parents=True, exist_ok=True)
+        connection = sqlite3.connect(home / "state_5.sqlite")
+        try:
+            connection.execute("CREATE TABLE threads (id TEXT PRIMARY KEY)")
+            connection.execute("INSERT INTO threads VALUES (?)", (thread_id,))
+            connection.commit()
+        finally:
+            connection.close()
+
+    def fake_daemon(self, socket_path):
+        process = Mock(returncode=0)
+        process.communicate = AsyncMock(
+            return_value=(json.dumps({"socketPath": socket_path}).encode(), b"")
         )
+        process.wait = AsyncMock()
+        return process
 
-        with patch.object(relay_module, "AppServer") as app_server:
-            metadata = app_server.return_value
-            for name in ("connect", "initialize", "read_thread", "close"):
-                setattr(metadata, name, AsyncMock())
-            metadata.read_thread.return_value = {"thread": {"modelProvider": "tca"}}
+    async def test_hook_home_starts_only_its_daemon_without_database_lookup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            for home in relay.codex_homes:
+                with (
+                    self.subTest(home=home),
+                    patch.object(
+                        relay, "_home_for_thread", side_effect=AssertionError("unexpected lookup")
+                    ),
+                    patch.object(
+                        relay_module.asyncio,
+                        "create_subprocess_exec",
+                        return_value=self.fake_daemon("/tmp/chosen.sock"),
+                    ) as start,
+                ):
+                    app = await relay._app_for_thread("thread", str(home))
+                    self.assertEqual(app.path, "/tmp/chosen.sock")
+                    self.assertEqual(
+                        start.call_args.args, ("codex", "app-server", "daemon", "start")
+                    )
+                    self.assertEqual(start.call_args.kwargs["env"]["CODEX_HOME"], str(home))
+                    self.assertEqual(start.call_args.kwargs["cwd"], home)
 
-            await relay._app_for_thread("thread")
+    async def test_old_token_finds_tca_session_when_official_daemon_is_absent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            self.make_database(relay.codex_homes[1], "thread")
+            with patch.object(
+                relay_module.asyncio,
+                "create_subprocess_exec",
+                return_value=self.fake_daemon("/tmp/tca.sock"),
+            ) as start:
+                app = await relay._app_for_thread("thread")
+            self.assertEqual(app.path, "/tmp/tca.sock")
+            self.assertEqual(start.call_args.kwargs["env"]["CODEX_HOME"], str(relay.codex_homes[1]))
+            self.assertFalse((relay.codex_homes[0] / "state_5.sqlite").exists())
 
-            app_server.assert_any_call("/tmp/openai.sock")
-            app_server.assert_called_with("/tmp/tca.sock")
-            metadata.close.assert_called_once_with()
+    async def test_old_token_refuses_missing_or_duplicate_thread(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            with patch.object(relay_module.asyncio, "create_subprocess_exec") as start:
+                with self.assertRaisesRegex(relay_module.AppServerError, "not found"):
+                    await relay._app_for_thread("missing")
+                for home in relay.codex_homes:
+                    self.make_database(home, "thread")
+                with self.assertRaisesRegex(relay_module.AppServerError, "multiple"):
+                    await relay._app_for_thread("thread")
+                start.assert_not_called()
 
-    async def test_default_provider_uses_explicit_socket(self):
-        relay = self.make_relay("/tmp/unused-codex-wecom-relay-test")
-        with patch.object(relay_module, "AppServer") as app_server:
-            await relay._app_for_thread("thread")
-            app_server.assert_called_once_with("/tmp/openai.sock")
+    async def test_reply_token_preserves_home_across_relay_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            home = str(relay.codex_homes[1])
+            token = relay._new_token("thread", home)
+            restarted = self.make_relay(directory)
+            callback = {
+                "body": {
+                    "msgtype": "text",
+                    "text": {"content": "reply"},
+                    "quote": {"text": {"content": f"r#{token}"}},
+                }
+            }
+            with patch.object(restarted, "_run_turn") as run:
+                ws = FakeWebSocket()
+                await restarted._handle_callback(ws, callback)
+                run.assert_awaited_once_with(ws, callback, "thread", "reply", home)
+
+    async def test_outbox_home_is_bound_to_token(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            home = str(relay.codex_homes[1])
+            Path(relay.outbox).write_text(
+                json.dumps(
+                    {"thread": "thread", "chatid": "user", "content": "done", "codex_home": home}
+                )
+                + "\n"
+            )
+            with patch.object(relay, "_send", return_value={"errcode": 0}):
+                await relay._process_outbox(FakeWebSocket())
+            token = relay._last_push["user"]["token"]
+            self.assertEqual(relay._tokens[token]["codex_home"], home)
+
+    async def test_unconfigured_hook_home_never_starts_daemon(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            with patch.object(relay_module.asyncio, "create_subprocess_exec") as start:
+                with self.assertRaisesRegex(relay_module.AppServerError, "unconfigured"):
+                    await relay._app_for_thread("thread", "/tmp/unconfigured")
+                start.assert_not_called()
+
+    async def test_failed_daemon_start_reports_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            process = self.fake_daemon("unused")
+            process.returncode = 1
+            with patch.object(relay_module.asyncio, "create_subprocess_exec", return_value=process):
+                with self.assertRaisesRegex(relay_module.AppServerError, "could not start"):
+                    await relay._app_for_thread("thread", str(relay.codex_homes[0]))
+
+    async def test_cancellation_stops_daemon_start_process(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            started = asyncio.Event()
+            process = self.fake_daemon("unused")
+            process.returncode = None
+
+            async def communicate():
+                started.set()
+                await asyncio.Event().wait()
+
+            process.communicate.side_effect = communicate
+            with patch.object(relay_module.asyncio, "create_subprocess_exec", return_value=process):
+                running = asyncio.create_task(
+                    relay._app_for_thread("thread", str(relay.codex_homes[0]))
+                )
+                await asyncio.wait_for(started.wait(), timeout=1)
+                running.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await running
+            process.kill.assert_called_once()
+            process.wait.assert_awaited_once()
 
 
 if __name__ == "__main__":

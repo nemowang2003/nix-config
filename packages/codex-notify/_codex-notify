@@ -28,9 +28,20 @@ function _codex-notify {
             '2:route profile:->profile'
           case $state in
             thread)
-              local database="${CODEX_HOME:-$HOME/.codex}/state_5.sqlite"
-              if [[ -r $database ]]; then
-                threads=("${(@f)$(@sqlite3@ -readonly "$database" 'SELECT id FROM threads ORDER BY updated_at DESC' 2>/dev/null)}")
+              local -a homes
+              if [[ -n $CODEX_NOTIFY_HOMES ]]; then
+                homes=("${(@s.:.)CODEX_NOTIFY_HOMES}")
+              else
+                homes=("${CODEX_HOME:-$HOME/.codex}" "$HOME/.codex-tca")
+              fi
+              local codex_home database
+              for codex_home in "${homes[@]}"; do
+                database="$codex_home/state_5.sqlite"
+                if [[ -r $database ]]; then
+                  threads+=("${(@f)$(@sqlite3@ -readonly "$database" 'SELECT id FROM threads ORDER BY updated_at DESC' 2>/dev/null)}")
+                fi
+              done
+              if (( ${#threads} )); then
                 _values -w 'thread ID' "${threads[@]}"
               else
                 _message 'thread ID'
@@ -50,6 +61,7 @@ function _codex-notify {
         notify)
           _arguments \
             '--wecom-relay[also send through the WeCom relay]' \
+            '--codex-home[home owning this notification]:directory:_files -/' \
             '1:notification title:'
           ;;
       esac

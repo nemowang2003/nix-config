@@ -7,6 +7,29 @@
   ...
 }: let
   models-lib = self.lib.models;
+  mk-hooks = codex-home: {
+    Stop = [
+      {
+        matcher = ".*";
+        hooks = [
+          {
+            type = "command";
+            command = lib.escapeShellArgs (
+              [
+                (lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.codex-notify)
+                "notify"
+                "Codex"
+                "--codex-home"
+                codex-home
+              ]
+              ++ lib.optional cfg.notify-wecom "--wecom-relay"
+            );
+            timeout = 3;
+          }
+        ];
+      }
+    ];
+  };
 in {
   # Per-person notification routes for codex-notify: a map of profile name to
   # both the ServerChan³ push URL and the WeCom single-chat userid. One thread
@@ -40,8 +63,15 @@ in {
   ];
 
   home.shellAliases."codex-list-sessions" = ''
-    ${lib.getExe pkgs.sqlite} -readonly -header -column "${config.home.homeDirectory}/.codex/state_5.sqlite" \
-      "SELECT id, cwd, title FROM threads ORDER BY updated_at DESC;" | $EDITOR
+    (
+      for codex_home in ${lib.escapeShellArgs ["${config.home.homeDirectory}/.codex" "${config.home.homeDirectory}/.codex-tca"]}; do
+        if [ -f "$codex_home/state_5.sqlite" ]; then
+          printf '%s\n' "$codex_home"
+          ${lib.getExe pkgs.sqlite} -readonly -header -column "$codex_home/state_5.sqlite" \
+            "SELECT id, cwd, title FROM threads ORDER BY updated_at DESC;"
+        fi
+      done
+    ) | $EDITOR
   '';
 
   my.codex = {
@@ -111,10 +141,10 @@ in {
           config.my.lsp.servers);
     };
 
-    # Everything that selects the TCA gateway lives in this interactive
-    # profile. Its provider registry and catalog are restricted to TCA.
-    # `model` and `model_reasoning_effort` remain mutable TUI choices.
-    profiles.tca = {
+    # The official and TCA homes share tools and instructions, but their
+    # provider routes, model defaults, credentials, and sessions are independent.
+    settings.model_provider = "openai";
+    tca-settings = {
       model_provider = "tca";
       model_catalog_json = pkgs.writeText "codex-tca-models.json" (builtins.toJSON {
         models =
@@ -153,7 +183,22 @@ in {
         };
       };
     };
-    profile-removed-paths.tca = [
+    removed-paths = [
+      ["model_catalog_json"]
+      ["model_providers" "tca"]
+      ["profile"]
+      ["profiles" "tca"]
+    ];
+    tca-removed-paths = [
+      ["forced_chatgpt_workspace_id"]
+      ["chatgpt_base_url"]
+      ["openai_base_url"]
+      ["apps"]
+      ["plugins"]
+      ["marketplaces"]
+      ["features" "plugins"]
+      ["profile"]
+      ["profiles"]
       ["forced_login_method"]
       ["model_providers" "tca" "env_key"]
     ];
@@ -163,19 +208,7 @@ in {
     # exits 0 so it never blocks a turn. No SessionEnd hook: it fires on every
     # teardown with a constant reason; stale route state can be removed with
     # `codex-notify cleanup`, using Codex's thread database as source of truth.
-    hooks = {
-      Stop = [
-        {
-          matcher = ".*";
-          hooks = [
-            {
-              type = "command";
-              command = "${lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.codex-notify} notify Codex${lib.optionalString cfg.notify-wecom " --wecom-relay"}";
-              timeout = 3;
-            }
-          ];
-        }
-      ];
-    };
+    hooks = mk-hooks "${config.home.homeDirectory}/.codex";
+    tca-hooks = mk-hooks "${config.home.homeDirectory}/.codex-tca";
   };
 }

@@ -7,8 +7,7 @@
   };
 
   systemd = {
-    # codex-openai-app-server, codex-tca-app-server, and codex-wecom-relay are
-    # home-manager user services (see
+    # codex-wecom-relay is a Home Manager user service (see
     # hosts/dt-w01/home-manager/default.nix). Linger is what lets that manager
     # start at boot and keep running across WSL session teardown, e.g. for the
     # skyland-auto-sign daily user timer as well.

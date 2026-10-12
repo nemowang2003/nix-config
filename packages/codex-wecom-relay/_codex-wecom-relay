@@ -10,15 +10,6 @@ function _codex-wecom-relay {
     '--ws-url[WeCom websocket endpoint]:websocket URL:' \
     '--state-dir[relay state directory]:directory:_files -/' \
     '--log-level[logging level]:level:(DEBUG INFO WARNING ERROR CRITICAL)' \
-    '--default-socket[default app-server Unix socket]:socket:_files' \
-    '*--provider-socket[dedicated app-server socket]:provider=path:->provider-socket'
-
-  if [[ $state == provider-socket ]]; then
-    if [[ $PREFIX == *=* ]]; then
-      compset -P '*='
-      _files
-    else
-      _message 'provider=socket-path'
-    fi
-  fi
+    '*--codex-home[independent Codex home]:directory:_files -/' \
+    '--codex-bin[Codex executable]:executable:_files'
 }

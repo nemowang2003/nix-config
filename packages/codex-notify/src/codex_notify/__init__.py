@@ -41,6 +41,8 @@ import sys
 import tempfile
 import time
 import uuid
+from contextlib import closing
+from pathlib import Path
 
 import httpx
 
@@ -118,24 +120,37 @@ def save_state(thread_id, state):
         log(f"state write failed thread={thread_id}")
 
 
-def codex_db_path():
-    return os.path.join(
-        os.environ.get("CODEX_HOME", os.path.expanduser("~/.codex")),
-        "state_5.sqlite",
+def codex_db_paths():
+    configured = os.environ.get("CODEX_NOTIFY_HOMES")
+    homes = (
+        configured.split(os.pathsep)
+        if configured
+        else [
+            os.environ.get("CODEX_HOME", os.path.expanduser("~/.codex")),
+            os.path.expanduser("~/.codex-tca"),
+        ]
     )
+    return [Path(home).expanduser().resolve() / "state_5.sqlite" for home in dict.fromkeys(homes)]
+
+
+def read_threads():
+    rows = []
+    for database in codex_db_paths():
+        if not database.exists():
+            continue
+        with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as connection:
+            rows.extend(
+                connection.execute(
+                    "SELECT id, COALESCE(title, '(untitled)'), updated_at FROM threads"
+                ).fetchall()
+            )
+    return sorted(rows, key=lambda row: row[2], reverse=True)
 
 
 def known_thread_hashes():
-    """Hash set of every thread id in the sqlite thread store.
-
-    Returns None when the store cannot be read so callers can refuse to prune
-    rather than risk deleting state on a transient failure.
-    """
+    """Union of both homes; an unreadable database prevents pruning any routes."""
     try:
-        connection = sqlite3.connect(f"file:{codex_db_path()}?mode=ro", uri=True)
-        rows = connection.execute("SELECT id FROM threads").fetchall()
-        connection.close()
-        return {hashlib.sha256(thread_id.encode()).hexdigest() for (thread_id,) in rows}
+        return {key_for(row[0]) for row in read_threads()}
     except sqlite3.Error:
         return None
 
@@ -227,7 +242,7 @@ def notify_local(title, content):
         log(f"notify local failed: {type(error).__name__}")
 
 
-def queue_wecom_push(thread_id, content, chatid):
+def queue_wecom_push(thread_id, content, chatid, codex_home):
     """Ask the dt-w01 WeCom long-connection to push a replyable notification.
 
     The chatid is resolved here from the thread's route; the transport on the
@@ -238,6 +253,7 @@ def queue_wecom_push(thread_id, content, chatid):
         entry = json.dumps(
             {
                 "thread": thread_id,
+                "codex_home": codex_home,
                 "content": wecom_markdown(content),
                 "chatid": chatid,
                 "at": int(time.time()),
@@ -433,15 +449,10 @@ def cmd_route(args):
 
 
 def cmd_pick():
-    db = codex_db_path()
     try:
-        connection = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-        rows = connection.execute(
-            "SELECT id, COALESCE(title, '(untitled)') FROM threads ORDER BY updated_at DESC"
-        ).fetchall()
-        connection.close()
+        rows = read_threads()
     except sqlite3.Error as error:
-        print(f"cannot read {db}: {error}", file=sys.stderr)
+        print(f"cannot read Codex session databases: {error}", file=sys.stderr)
         return 1
     if not rows:
         print("no threads found", file=sys.stderr)
@@ -449,7 +460,7 @@ def cmd_pick():
     # Thread titles can contain newlines, so never rely on fzf's line layout
     # to carry the id back. Feed one line per thread with a TAB separator and
     # a flattened title; parse the id from the part before the first TAB.
-    lines = [f"{tid}\t{re.sub(r'\s+', ' ', title).strip()}" for tid, title in rows]
+    lines = [f"{tid}\t{re.sub(r'\s+', ' ', title).strip()}" for tid, title, _updated in rows]
     selection = fzf_select("session> ", "\n".join(lines))
     if not selection:
         return 0
@@ -467,6 +478,10 @@ def cmd_pick():
 def cmd_notify(args):
     title = args[1] if len(args) > 1 else "Codex"
     wecom_enabled = "--wecom-relay" in args[2:]
+    codex_home = os.environ.get("CODEX_HOME", os.path.expanduser("~/.codex"))
+    if "--codex-home" in args[2:]:
+        codex_home = args[args.index("--codex-home", 2) + 1]
+    codex_home = str(Path(codex_home).expanduser().resolve())
     payload = stdin_json()
 
     # A blocking Stop hook elsewhere re-runs the whole Stop set in the same
@@ -494,7 +509,7 @@ def cmd_notify(args):
         log("notify serverchan skip: url profile missing")
 
     if chatid and wecom_enabled:
-        queue_wecom_push(thread_id, content, chatid)
+        queue_wecom_push(thread_id, content, chatid, codex_home)
     elif chatid:
         log("notify wecom skip: no relay configured on this host")
     else:
