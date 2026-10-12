@@ -38,9 +38,10 @@ the shared sops environment and Windows PATH so daemons first started by a
 WeCom reply can use the TCA credentials and WSL tools. A running daemon keeps
 its existing environment.
 
-The first Home Manager activation preserves the old TCA profile's model
-preferences in the new home and archives the old profile there. Existing
-session databases and histories are not moved between homes.
+Home Manager activation only maintains declared configuration. Home and
+profile migrations are manual operations; users choose the source and target
+explicitly. The optional [migration tool](../codex-home-migrate/README.md) is
+available through `nix run`, without installation into the user profile.
 
 ## Queue limitation
 

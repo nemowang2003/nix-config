@@ -1,4 +1,4 @@
-"""One-time Home Manager migration of an inactive Codex home."""
+"""Explicitly migrate an inactive Codex home; check only unless --apply is supplied."""
 
 import argparse
 import json
@@ -132,17 +132,21 @@ def migrate(source, target):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--check", action="store_true", help="validate without moving or writing files"
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--apply",
+        action="store_true",
+        help="move the explicitly supplied source to target and update paths",
     )
+    mode.add_argument("--check", action="store_true", help="validate without writes (default)")
     parser.add_argument("source", type=Path)
     parser.add_argument("target", type=Path)
     args = parser.parse_args(argv)
     try:
-        if args.check:
-            check_migration(args.source, args.target)
-        else:
+        if args.apply:
             migrate(args.source, args.target)
+        else:
+            check_migration(args.source, args.target)
     except (OSError, ValueError, sqlite3.Error, RuntimeError) as error:
         parser.exit(1, f"codex-home-migrate: {error}\n")
     return 0

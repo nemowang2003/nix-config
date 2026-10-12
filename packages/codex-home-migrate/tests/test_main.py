@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from codex_home_migrate import check_migration, migrate
+from codex_home_migrate import check_migration, main, migrate
 
 
 class MigrationTests(unittest.TestCase):
@@ -57,6 +57,23 @@ class MigrationTests(unittest.TestCase):
             )
             migrate(old, new)
             self.assertFalse(old.exists())
+
+    def test_cli_only_moves_home_with_explicit_apply(self):
+        with tempfile.TemporaryDirectory() as directory:
+            old, new = (
+                Path(directory) / "user-selected-source",
+                Path(directory) / "user-selected-target",
+            )
+            old.mkdir()
+            (old / "auth.json").write_text('{"token":"test-secret"}')
+            self.assertEqual(main([str(old), str(new)]), 0)
+            self.assertTrue(old.exists())
+            self.assertFalse(new.exists())
+            self.assertEqual(main(["--check", str(old), str(new)]), 0)
+            self.assertTrue(old.exists())
+            self.assertEqual(main(["--apply", str(old), str(new)]), 0)
+            self.assertFalse(old.exists())
+            self.assertTrue((new / "auth.json").exists())
 
     def test_running_daemon_prevents_any_move(self):
         with tempfile.TemporaryDirectory() as directory:

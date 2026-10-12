@@ -122,7 +122,6 @@ in {
     tca-target = ".codex-tca";
     tca-home = "${config.home.homeDirectory}/${tca-target}";
     tca-config-path = "${tca-home}/config.toml";
-    legacy-tca-profile = "${official-home}/tca.config.toml";
     codex-lib = import "${inputs.home-manager}/modules/programs/codex/lib.nix" {inherit lib pkgs;};
     # Copy individual declarative assets, never mutable directories or auth/state.
     common-files =
@@ -192,7 +191,7 @@ in {
       source,
       removed-paths ? [],
     }:
-      lib.hm.dag.entryAfter ["migrate-codex-official-home"] (
+      lib.hm.dag.entryAfter ["writeBoundary"] (
         self.lib.mutable-config.mk-mutable-merge {
           inherit pkgs path source removed-paths;
           format = "toml";
@@ -273,21 +272,7 @@ in {
             };
           }
           // {
-            check-codex-official-migration = lib.hm.dag.entryBefore ["writeBoundary"] ''
-              ${lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.codex-home-migrate} --check \
-                ${lib.escapeShellArg "${config.home.homeDirectory}/${config-dir}"} ${lib.escapeShellArg official-home}
-            '';
-            migrate-codex-official-home = lib.hm.dag.entryBetween ["linkGeneration"] ["writeBoundary"] ''
-              $DRY_RUN_CMD ${lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.codex-home-migrate} \
-                ${lib.escapeShellArg "${config.home.homeDirectory}/${config-dir}"} ${lib.escapeShellArg official-home}
-            '';
-            migrate-codex-tca-profile = lib.hm.dag.entryAfter ["migrate-codex-official-home"] ''
-              if [ ! -f ${lib.escapeShellArg tca-config-path} ] && [ -f ${lib.escapeShellArg legacy-tca-profile} ]; then
-                $DRY_RUN_CMD mkdir -p ${lib.escapeShellArg tca-home}
-                $DRY_RUN_CMD install -m 600 ${lib.escapeShellArg legacy-tca-profile} ${lib.escapeShellArg tca-config-path}
-              fi
-            '';
-            mutable-codex-tca-config = lib.hm.dag.entryAfter ["migrate-codex-tca-profile"] (
+            mutable-codex-tca-config = lib.hm.dag.entryAfter ["writeBoundary"] (
               self.lib.mutable-config.mk-mutable-merge {
                 inherit pkgs;
                 format = "toml";
@@ -296,11 +281,6 @@ in {
                 removed-paths = cfg.tca-removed-paths;
               }
             );
-            retire-codex-tca-profile = lib.hm.dag.entryAfter ["mutable-codex-tca-config"] ''
-              if [ -f ${lib.escapeShellArg legacy-tca-profile} ]; then
-                $DRY_RUN_CMD mv ${lib.escapeShellArg legacy-tca-profile} ${lib.escapeShellArg "${tca-home}/tca.config.toml"}."$HOME_MANAGER_BACKUP_EXT"
-              fi
-            '';
           };
       };
     };
