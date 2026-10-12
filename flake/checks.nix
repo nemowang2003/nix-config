@@ -28,6 +28,7 @@
     checks =
       package-tests
       // {
+        llama-on-demand-proxy-import = inputs.llama-on-demand.checks.${pkgs.stdenv.hostPlatform.system}.proxy-import;
         llama-on-demand-unit = inputs.llama-on-demand.checks.${pkgs.stdenv.hostPlatform.system}.unit;
         host-eval = assert builtins.deepSeq ([self.user-pubkeys] ++ host-evaluations) true;
           pkgs.runCommand "host-eval" {} ''

@@ -51,7 +51,7 @@
     audio-transcribe.url = "github:nemowang2003/audio-transcribe/v0.2.0";
     audio-transcribe.inputs.nixpkgs.follows = "nixpkgs";
 
-    llama-on-demand.url = "github:nemowang2003/llama-on-demand/v0.1.0";
+    llama-on-demand.url = "github:nemowang2003/llama-on-demand/v0.1.1";
     llama-on-demand.inputs.nixpkgs.follows = "nixpkgs";
 
     ja2zh-srt.url = "github:nemowang2003/ja2zh-srt/v0.2.0";
