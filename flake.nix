@@ -48,6 +48,16 @@
 
     llm-agents.url = "github:numtide/llm-agents.nix";
 
+    audio-transcribe.url = "github:nemowang2003/audio-transcribe/v0.2.0";
+    audio-transcribe.inputs.nixpkgs.follows = "nixpkgs";
+
+    llama-on-demand.url = "github:nemowang2003/llama-on-demand/v0.1.0";
+    llama-on-demand.inputs.nixpkgs.follows = "nixpkgs";
+
+    ja2zh-srt.url = "github:nemowang2003/ja2zh-srt/v0.2.0";
+    ja2zh-srt.inputs.nixpkgs.follows = "nixpkgs";
+    ja2zh-srt.inputs.audio-transcribe.follows = "audio-transcribe";
+
     # dependencies
     flake-utils.url = "github:numtide/flake-utils";
 

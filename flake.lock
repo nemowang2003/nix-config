@@ -1,5 +1,26 @@
 {
   "nodes": {
+    "audio-transcribe": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1791823951,
+        "narHash": "sha256-PbABoyiP30PWoUFpquNQ6kZh65o3SveCK2laj08+Nwg=",
+        "owner": "nemowang2003",
+        "repo": "audio-transcribe",
+        "rev": "2648bca8612153d04f0fa53f0cf45df7c932a66f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nemowang2003",
+        "ref": "v0.2.0",
+        "repo": "audio-transcribe",
+        "type": "github"
+      }
+    },
     "bdwgc": {
       "flake": false,
       "locked": {
@@ -381,6 +402,51 @@
         "type": "github"
       }
     },
+    "ja2zh-srt": {
+      "inputs": {
+        "audio-transcribe": [
+          "audio-transcribe"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1791824351,
+        "narHash": "sha256-FVYNYMMX5FSmbof1gIrlSc8+EE3Qf4CiFxz/mK3WoeM=",
+        "owner": "nemowang2003",
+        "repo": "ja2zh-srt",
+        "rev": "9fcb1a4da0f5e622edca63822ef96d720a7e8c9c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nemowang2003",
+        "ref": "v0.2.0",
+        "repo": "ja2zh-srt",
+        "type": "github"
+      }
+    },
+    "llama-on-demand": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1791824233,
+        "narHash": "sha256-kMFSzRrP0B1RWYDbU5sGPA8u1UNSGods6HEmQ+CqqSU=",
+        "owner": "nemowang2003",
+        "repo": "llama-on-demand",
+        "rev": "08fa27b0521700eb0face9504b11f418d36711b8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nemowang2003",
+        "ref": "v0.1.0",
+        "repo": "llama-on-demand",
+        "type": "github"
+      }
+    },
     "llm-agents": {
       "inputs": {
         "bun2nix": "bun2nix",
@@ -632,6 +698,7 @@
     },
     "root": {
       "inputs": {
+        "audio-transcribe": "audio-transcribe",
         "catppuccin": "catppuccin",
         "darwin": "darwin",
         "determinate": "determinate",
@@ -641,6 +708,8 @@
         "haumea": "haumea",
         "helix": "helix",
         "home-manager": "home-manager",
+        "ja2zh-srt": "ja2zh-srt",
+        "llama-on-demand": "llama-on-demand",
         "llm-agents": "llm-agents",
         "nix-homebrew": "nix-homebrew",
         "nixago": "nixago",

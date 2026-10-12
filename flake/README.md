@@ -15,7 +15,7 @@ package 或配置字段，具体定义以链接中的代码为准。
 | `self.nixosConfigurations.<host>` | [configurations.nix](configurations.nix) | NixOS/WSL 系统配置，供 `nixos-rebuild` 使用。 |
 | `self.genericConfigurations.<host>` | [configurations.nix](configurations.nix) | generic Linux 的模块求值结果；`generic-rebuild` 使用其中的系统 activation package。 |
 | `self.homeConfigurations.<user>@<host>` | [configurations.nix](configurations.nix) | 每台注册主机的独立 Home Manager 配置，供 `home-manager switch` 和 `check-activation` 使用。 |
-| `self.packages.<system>` | [packages.nix](packages.nix)、[devshell.nix](devshell.nix) | 导出 [packages/](../packages/) 中的本地程序，以及 devshell 生成的 `sops-yaml`；模块通过此入口引用本地 package。 |
+| `self.packages.<system>` | [packages.nix](packages.nix)、[devshell.nix](devshell.nix) | 导出 [packages/](../packages/) 中的配置关联程序、独立工具 flake inputs 提供的程序，以及 devshell 生成的 `sops-yaml`；模块通过此入口引用 package。 |
 | `self.checks.<system>` | [checks.nix](checks.nix) | 自动收集 package 的 `passthru.tests`，并检查注册主机的配置求值；由 `nix flake check` 执行。 |
 | `self.devShells.<system>.default` | [devshell.nix](devshell.nix)、[formatter.nix](formatter.nix) | 开发环境、部署和检查命令；启动时设置 sops 密钥环境并生成 `.sops.yaml` 和 `ruff.toml`。 |
 | `self.formatter.<system>` | [formatter.nix](formatter.nix) | `nix fmt` 的入口，通过 treefmt 调度 Alejandra 和 Ruff。 |

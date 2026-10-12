@@ -10,6 +10,7 @@
     [
       inputs.catppuccin.homeModules.catppuccin
       inputs.sops-nix.homeManagerModules.sops
+      inputs.llama-on-demand.homeManagerModules.default
     ]
     ++ self.lib.collect-nix-files ./modules
     ++ self.lib.collect-nix-files ./profiles;
