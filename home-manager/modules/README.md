@@ -45,8 +45,7 @@ activation 只维护声明的配置，不检查、猜测或迁移旧 home，也�
 已有 home 的迁移由用户先手动运行
 [`codex-home-migrate`](../../packages/codex-home-migrate/README.md)，明确指定源与目标。
 该工具只通过 `nix run .#codex-home-migrate` 使用，不安装进 Home Manager 或 devshell PATH。
-`codex-tca`
-设置 `CODEX_HOME` 后调用同一 Codex 二进制，并复用 `codex` 的 zsh 补全；
+`codex-tca` 设置 `CODEX_HOME` 后调用同一 Codex 二进制，并复用 `codex` 的 zsh 补全；
 不传 `--profile` 或 `--remote`，由 Codex 自动启动各自的 daemon。session、
 认证与模型偏好均不共享；instructions、用户技能、rules 和 MCP 声明用于两边。
 TCA 配置由上游渲染的声明配置与 `tca-settings` 合并，去掉
@@ -54,6 +53,13 @@ TCA 配置由上游渲染的声明配置与 `tca-settings` 合并，去掉
 共享 [Codex profile](../profiles/agents/codex/default.nix) 为两边 Stop hooks
 传递不同的 `--codex-home`，通知与企业微信回复 token 因此能直接识别所属 daemon。
 OpenAI plugins/apps 配置仅用于官方 home。
+
+两个 home 都使用显式名称，是为了避免在 `$HOME` 运行 TCA 时，把另一份
+`~/.codex` 全局配置识别为 project-local 配置。Codex 0.162.1 只跳过与当前
+`CODEX_HOME` 相同的 `.codex`；受信任的项目层仍可覆盖模型设置并发现 hooks。
+因此迁移后应让旧 `~/.codex` 不再承载全局配置，也不保留兼容 symlink。
+详细原因、版本化源码与迁移工具的适用范围见
+[迁移工具 README](../../packages/codex-home-migrate/README.md)。
 
 主 TOML 与 profile TOML 在 activation 时逐字段合并，保留声明中未提及的
 运行时数据；删除声明不会自动清除已有字段。`removed-paths`、
