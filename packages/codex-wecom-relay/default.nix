@@ -1,12 +1,9 @@
 {
   python-application,
   pkgs,
-  uv2nix,
   pyproject-nix,
-  pyproject-build-systems,
 }:
 python-application {
-  inherit pkgs uv2nix pyproject-nix pyproject-build-systems;
+  inherit pkgs pyproject-nix;
   root = ./.;
-  name = "codex-wecom-relay";
 }

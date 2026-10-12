@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from audio_transcribe import cli
+import audio_transcribe as cli
 
 
 class TranscribeCliTests(unittest.TestCase):

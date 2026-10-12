@@ -1,0 +1,16 @@
+#compdef audio-transcribe
+
+function _audio-transcribe {
+  _arguments \
+    '(-h --help)'{-h,--help}'[show help]' \
+    '(-o --output)'{-o,--output}'[write text to a file]:output file:_files' \
+    '--model[model name or local directory]:model:_files -/' \
+    '--model-cache[model cache directory]:directory:_files -/' \
+    '--device[inference device]:device:(cpu cuda)' \
+    '--compute-type[CTranslate2 compute type]:compute type:' \
+    '--language[language code]:language:' \
+    '--task[transcription task]:task:(transcribe translate)' \
+    '--timestamps[include segment timestamps]' \
+    '--vad[enable voice activity detection]' \
+    '1:audio file:_files'
+}

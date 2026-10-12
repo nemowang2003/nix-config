@@ -1,0 +1,24 @@
+#compdef codex-wecom-relay
+
+function _codex-wecom-relay {
+  local context state state_descr line
+  local -A opt_args
+
+  _arguments \
+    '(-h --help)'{-h,--help}'[show help]' \
+    '--config[bot configuration JSON]:configuration file:_files' \
+    '--ws-url[WeCom websocket endpoint]:websocket URL:' \
+    '--state-dir[relay state directory]:directory:_files -/' \
+    '--log-level[logging level]:level:(DEBUG INFO WARNING ERROR CRITICAL)' \
+    '--default-socket[default app-server Unix socket]:socket:_files' \
+    '*--provider-socket[dedicated app-server socket]:provider=path:->provider-socket'
+
+  if [[ $state == provider-socket ]]; then
+    if [[ $PREFIX == *=* ]]; then
+      compset -P '*='
+      _files
+    else
+      _message 'provider=socket-path'
+    fi
+  fi
+}

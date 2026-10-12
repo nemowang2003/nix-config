@@ -1,18 +1,22 @@
 {
   python-application,
   pkgs,
-  uv2nix,
   pyproject-nix,
-  pyproject-build-systems,
 }: let
   application = python-application {
-    inherit pkgs uv2nix pyproject-nix pyproject-build-systems;
+    inherit pkgs pyproject-nix;
     root = ./.;
-    name = "codex-notify";
   };
 in
   application.overrideAttrs (old: {
     nativeBuildInputs = (old.nativeBuildInputs or []) ++ [pkgs.makeWrapper];
+    postInstall =
+      (old.postInstall or "")
+      + ''
+        substituteInPlace "$out/share/zsh/site-functions/_codex-notify" \
+          --replace-fail '@sqlite3@' '${pkgs.lib.getExe pkgs.sqlite}' \
+          --replace-fail '@jq@' '${pkgs.lib.getExe pkgs.jq}'
+      '';
     postFixup =
       (old.postFixup or "")
       + ''

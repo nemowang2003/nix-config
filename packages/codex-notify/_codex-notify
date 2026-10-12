@@ -1,0 +1,58 @@
+#compdef codex-notify
+
+function _codex-notify {
+  local context state state_descr line
+  local -A opt_args
+  local -a subcommands profiles threads
+  subcommands=(
+    'route:assign or clear a notification route'
+    'pick:interactively choose a session and route'
+    'cleanup:remove routes for missing sessions'
+    'notify:send a Codex turn notification'
+    'drain:send queued ServerChan notifications'
+  )
+
+  _arguments -C \
+    '1:subcommand:->subcommand' \
+    '*::argument:->arguments'
+
+  case $state in
+    subcommand)
+      _describe 'subcommand' subcommands
+      ;;
+    arguments)
+      case $line[1] in
+        route)
+          _arguments \
+            '1:thread ID:->thread' \
+            '2:route profile:->profile'
+          case $state in
+            thread)
+              local database="${CODEX_HOME:-$HOME/.codex}/state_5.sqlite"
+              if [[ -r $database ]]; then
+                threads=("${(@f)$(@sqlite3@ -readonly "$database" 'SELECT id FROM threads ORDER BY updated_at DESC' 2>/dev/null)}")
+                _values -w 'thread ID' "${threads[@]}"
+              else
+                _message 'thread ID'
+              fi
+              ;;
+            profile)
+              local routes="${XDG_CONFIG_HOME:-$HOME/.config}/codex-notify/routes.json"
+              if [[ -r $routes ]]; then
+                profiles=("${(@f)$(@jq@ -r 'keys[]' "$routes" 2>/dev/null)}")
+                _values -w 'route profile' "${profiles[@]}"
+              else
+                _message 'route profile'
+              fi
+              ;;
+          esac
+          ;;
+        notify)
+          _arguments \
+            '--wecom-relay[also send through the WeCom relay]' \
+            '1:notification title:'
+          ;;
+      esac
+      ;;
+  esac
+}

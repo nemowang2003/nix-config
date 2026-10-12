@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from codex_wecom_relay import main as relay_module
+import codex_wecom_relay as relay_module
 from websockets.asyncio.server import unix_serve
 
 

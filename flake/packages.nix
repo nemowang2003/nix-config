@@ -8,7 +8,7 @@
       src = ../packages;
       inputs = {
         inherit pkgs;
-        inherit (inputs) uv2nix pyproject-nix pyproject-build-systems;
+        inherit (inputs) pyproject-nix;
         python-application = self.lib.python-application;
       };
       loader = inputs.haumea.lib.loaders.callPackage;

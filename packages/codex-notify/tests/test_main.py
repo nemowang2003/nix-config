@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from codex_notify import main as notify
+import codex_notify as notify
 
 
 class NotifyTests(unittest.TestCase):
@@ -40,9 +40,7 @@ class NotifyTests(unittest.TestCase):
         post.return_value.status_code = 200
         post.return_value.json.return_value = {"code": 0}
 
-        self.assertEqual(
-            notify.send_serverchan("title", "content", "https://example.invalid"), 0
-        )
+        self.assertEqual(notify.send_serverchan("title", "content", "https://example.invalid"), 0)
 
         self.assertFalse(post.call_args.kwargs["trust_env"])
 
@@ -50,9 +48,7 @@ class NotifyTests(unittest.TestCase):
     def test_serverchan_api_rejection_is_failure(self, post):
         post.return_value.json.return_value = {"code": 1, "message": "rejected"}
 
-        self.assertEqual(
-            notify.send_serverchan("title", "content", "https://example.invalid"), 1
-        )
+        self.assertEqual(notify.send_serverchan("title", "content", "https://example.invalid"), 1)
 
     def test_serverchan_retries_within_one_hook_dispatch(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -62,7 +58,9 @@ class NotifyTests(unittest.TestCase):
                     notify, "serverchan_outbox", str(Path(directory) / "serverchan-outbox")
                 ),
                 mock.patch.object(
-                    notify, "load_routes", return_value={"me": {"serverchan": "https://example.invalid"}}
+                    notify,
+                    "load_routes",
+                    return_value={"me": {"serverchan": "https://example.invalid"}},
                 ),
                 mock.patch.object(notify, "send_serverchan", side_effect=[1, 0]) as send,
                 mock.patch.object(notify.time, "sleep") as sleep,
@@ -84,7 +82,9 @@ class NotifyTests(unittest.TestCase):
                     notify, "serverchan_outbox", str(Path(directory) / "serverchan-outbox")
                 ),
                 mock.patch.object(
-                    notify, "load_routes", return_value={"me": {"serverchan": "https://example.invalid"}}
+                    notify,
+                    "load_routes",
+                    return_value={"me": {"serverchan": "https://example.invalid"}},
                 ),
                 mock.patch.object(notify, "send_serverchan", return_value=1) as send,
                 mock.patch.object(notify.time, "sleep"),
@@ -98,7 +98,9 @@ class NotifyTests(unittest.TestCase):
                 self.assertTrue(path.exists())
                 self.assertEqual(send.call_count, 3)
                 self.assertEqual(json.loads(path.read_text())["attempts"], 3)
-                self.assertTrue(any("retained for next hook" in call.args[0] for call in log.call_args_list))
+                self.assertTrue(
+                    any("retained for next hook" in call.args[0] for call in log.call_args_list)
+                )
 
     def test_wecom_queue_requires_relay_on_host(self):
         with (

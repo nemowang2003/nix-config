@@ -1,2 +1,2 @@
 {pkgs, ...}:
-pkgs.writeShellScriptBin "wsl-windows-path" (builtins.readFile ./windows-path.sh)
+pkgs.writeShellScriptBin "wsl-windows-path" (builtins.readFile ./main.sh)

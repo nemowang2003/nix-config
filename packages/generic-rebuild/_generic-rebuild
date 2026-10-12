@@ -1,0 +1,7 @@
+#compdef generic-rebuild
+
+function _generic-rebuild {
+  _arguments \
+    '--flake[configuration flake path or reference]:flake:_files -/' \
+    '1:action:(build switch)'
+}
