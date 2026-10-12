@@ -98,9 +98,13 @@ class AppServer:
             self._socket = None
 
     async def _send_json(self, message):
+        if self._socket is None:
+            raise AppServerError("app-server WebSocket is not connected")
         await self._socket.send(json.dumps(message))
 
     async def _receive_json(self):
+        if self._socket is None:
+            raise AppServerError("app-server WebSocket is not connected")
         message = await self._socket.recv()
         if not isinstance(message, str):
             raise AppServerError("app-server returned a binary WebSocket message")

@@ -232,7 +232,8 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             path = str(Path(directory) / "app.sock")
-            async with unix_serve(serve, path):
+            server = await unix_serve(serve, path)
+            async with server:
                 app = relay_module.AppServer(path)
                 await app.connect()
                 try:

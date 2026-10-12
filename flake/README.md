@@ -17,7 +17,7 @@ package 或配置字段，具体定义以链接中的代码为准。
 | `self.homeConfigurations.<user>@<host>` | [configurations.nix](configurations.nix) | 每台注册主机的独立 Home Manager 配置，供 `home-manager switch` 和 `check-activation` 使用。 |
 | `self.packages.<system>` | [packages.nix](packages.nix)、[devshell.nix](devshell.nix) | 导出 [packages/](../packages/) 中的配置关联程序、独立工具 flake inputs 提供的程序，以及 devshell 生成的 `sops-yaml`；模块通过此入口引用 package。 |
 | `self.checks.<system>` | [checks.nix](checks.nix) | 自动收集 package 的 `passthru.tests`，检查锁定转写环境的解码、LLM 代理安装导入与注册主机的配置求值；由 `nix flake check` 执行。 |
-| `self.devShells.<system>.default` | [devshell.nix](devshell.nix)、[formatter.nix](formatter.nix) | 开发环境、部署和检查命令；启动时设置 sops 密钥环境并生成 `.sops.yaml` 和 `ruff.toml`。 |
+| `self.devShells.<system>.default` | [devshell.nix](devshell.nix)、[formatter.nix](formatter.nix)、[pre-commit.nix](pre-commit.nix) | 开发环境、部署和检查命令；启动时设置 sops 密钥环境并生成 `.sops.yaml`、`ruff.toml` 和 `.pre-commit-config.yaml`。 |
 | `self.formatter.<system>` | [formatter.nix](formatter.nix) | `nix fmt` 的入口，通过 treefmt 调度 Alejandra 和 Ruff。 |
 | `self.formatter-settings` | [formatter.nix](formatter.nix) | 共享格式化规则；其中的 `ruff` 同时供 nixago 和 Home Manager 全局 Ruff 配置使用。 |
 | `self.build-nix-settings` | [nix-settings.nix](nix-settings.nix) | 接收主机元数据 `cfg`，返回对应平台的 Nix 设置模块；由 Darwin、NixOS 和 generic profiles 调用。 |
@@ -55,6 +55,11 @@ nix eval '.#homeConfigurations."nemo@nb-d01".config.home.stateVersion'
 [Darwin modules](../darwin/modules/README.md)。
 
 ## 更新规则
+
+开发配置由 nixago 生成并被 Git 忽略。进入 `nix develop` 后，每个 clone
+运行一次 `pre-commit install`；用 `pre-commit run --all-files` 检查整个仓库。
+提交时运行 Alejandra、Ruff lint/format 和本地 Python 应用的 ty 检查；ty
+使用各应用声明的 Nix Python 依赖环境。
 
 新增、删除、重命名输出入口，或改变其用途、使用方式时，同步更新本文。
 主机、package 或子字段的普通增减无需逐项登记；内部实现变化无需更新本文。
