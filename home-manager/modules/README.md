@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | `my.lsp.servers` | [lsp.nix](lsp.nix) | 按 ID 登记 LSP 的 package/command、参数及是否向 PATH 和 agent 暴露；由 `my.languages` 和 agent profiles 消费。启用的条目必须提供 package 或 command。 |
 | `my.languages` | [languages.nix](languages.nix) | 按语言登记扩展名、项目根标志、LSP 引用和 formatter；生成 Helix 的语言配置，并供 agent profiles 选择 LSP。引用的 LSP 必须存在且启用。 |
-| `my.codex` | [codex.nix](codex.nix) | 包装上游 `programs.codex`，生成独立的官方与 TCA home，组合 instructions，并在 activation 时合并可写配置；由 [Codex profile](../profiles/agents/codex/default.nix) 和主机覆盖使用。 |
+| `my.codex` | [codex.nix](codex.nix) | 包装上游 `programs.codex`，生成独立的官方与可扩展的额外 home，组合 instructions，并在 activation 时合并可写配置；由 [Codex profile](../profiles/agents/codex/default.nix) 和主机覆盖使用。 |
 | `my.secrets` | [secrets.nix](secrets.nix) | `files` 登记整文件或 keyed secret 的来源和落地路径；`twofa` 保留账号形状的 2FA 文件登记。模块还自动 materialize 可用的分组 env 文件，供 zsh 导出环境变量。 |
 | `my.skland` | [skland.nix](skland.nix) | Skland 自动签到的选项骨架。目前启用仅产生警告，尚未实现 service、timer、secret 渲染或 credential 合并，不能据此部署签到任务。 |
 
@@ -39,22 +39,30 @@
 `my.codex` 镜像上游的主要配置选项。`contexts` 接受文本或文件路径，
 组合后交给上游生成 instructions；`custom-instructions` 是 `context` 的兼容入口。
 
-每台主机同时生成 `~/.codex-openai` 和独立的 `~/.codex-tca`。官方 `codex`
-启动器固定使用 `.codex-openai`，保留同一包的补全与辅助程序。
+每台主机生成 `~/.codex-openai`、`~/.codex-tca` 和 `~/.codex-wcy`。
+官方 `codex` 启动器固定设置 `CODEX_HOME=~/.codex-openai`，保留同一包的补全与辅助程序。
+`my.codex.settings` 等顶层声明默认写入官方 home，并作为额外 home 的公共声明来源。
 activation 只维护声明的配置，不检查、猜测或迁移旧 home，也不搬动旧 profile。
 已有 home 的迁移由用户先手动运行
 [`codex-home-migrate`](../../packages/codex-home-migrate/README.md)，明确指定源与目标。
 该工具只通过 `nix run .#codex-home-migrate` 使用，不安装进 Home Manager 或 devshell PATH。
-`codex-tca` 设置 `CODEX_HOME` 后调用同一 Codex 二进制，并复用 `codex` 的 zsh 补全；
-不传 `--profile` 或 `--remote`，由 Codex 自动启动各自的 daemon。session、
-认证与模型偏好均不共享；instructions、用户技能、rules 和 MCP 声明用于两边。
-TCA 配置由上游渲染的声明配置与 `tca-settings` 合并，去掉
-`tca-removed-paths` 指定的官方专属字段；`tca-hooks` 可单独声明 TCA hooks。
-共享 [Codex profile](../profiles/agents/codex/default.nix) 为两边 Stop hooks
-传递不同的 `--codex-home`，通知与企业微信回复 token 因此能直接识别所属 daemon。
-OpenAI plugins/apps 配置仅用于官方 home。
 
-两个 home 都使用显式名称，是为了避免在 `$HOME` 运行 TCA 时，把另一份
+新增 home 只需声明 `my.codex.homes.<名称> = {};`，即生成 `codex-<名称>` 命令，
+固定设置 `CODEX_HOME=~/.codex-<名称>` 后调用原始 Codex 二进制，并复用 `codex` 的 zsh 补全。
+名称使用小写字母、数字和连字符；`openai` 保留给官方 home。
+每个额外 home 继承声明的 instructions、skills、rules、MCP、配置与普通 profiles。
+认证、session、运行时模型选择和自行安装的 plugins/skills 各自独立，不复制其他 home 的运行时文件。
+WCY 仅声明空 home，使用公共配置与默认 OpenAI provider；TCA 在 `homes.tca.settings`
+中覆盖 provider 和 model catalog，不影响其他 home。
+
+`homes.<名称>.settings` 与公共声明合并；`homes.<名称>.removed-paths` 在合并后移除指定字段，
+默认继承顶层 `removed-paths`。TCA 单独声明自己的移除列表。
+`hooks-for-home` 接受额外 home 的绝对路径并生成 hooks，默认返回顶层 `hooks`；
+也可以用 `homes.<名称>.hooks` 单独覆盖。共享 [Codex profile](../profiles/agents/codex/default.nix)
+为各 home 的 Stop hooks 传递各自的 `--codex-home`，通知和企业微信回复可据此定位 daemon。
+旧 `tca-settings`、`tca-hooks`、`tca-removed-paths` 选项保留为对应 `homes.tca.*` 的兼容入口。
+
+所有 home 都使用显式名称，是为了避免在 `$HOME` 运行 TCA 时，把另一份
 `~/.codex` 全局配置识别为 project-local 配置。Codex 0.162.1 只跳过与当前
 `CODEX_HOME` 相同的 `.codex`；受信任的项目层仍可覆盖模型设置并发现 hooks。
 因此迁移后应让旧 `~/.codex` 不再承载全局配置，也不保留兼容 symlink。
@@ -63,12 +71,12 @@ OpenAI plugins/apps 配置仅用于官方 home。
 
 主 TOML 与 profile TOML 在 activation 时逐字段合并，保留声明中未提及的
 运行时数据；删除声明不会自动清除已有字段。`removed-paths`、
-`tca-removed-paths`、`profile-removed-paths` 分别清理官方配置、TCA 配置和
+`homes.<名称>.removed-paths`、`profile-removed-paths` 分别清理官方配置、额外 home 配置和
 普通 profile 的旧路径。旧 TCA profile 的模型偏好和历史如何迁移，也由用户手动决定。
 
-`CODEX_NOTIFY_HOMES` 登记两个 home，供通知维护命令、session 列表和补全
-查询两个独立数据库。dt-w01 的 relay 使用通知里的 home；旧 token 回退到
-数据库查找。回复时只启动或复用所属 home 的 daemon，无需 app-server systemd 服务。
+只读 `home-directories` 列出所有 home 的绝对路径。`CODEX_NOTIFY_HOMES`、session 列表、
+通知补全与 dt-w01 relay 自动使用该列表，无需在新增 home 时逐个修改。
+dt-w01 的 relay 使用通知里的 home；旧 token 回退到数据库查找。回复时只启动或复用所属 home 的 daemon，无需 app-server systemd 服务。
 
 ```nix
 {
@@ -76,7 +84,8 @@ OpenAI plugins/apps 配置仅用于官方 home。
     enable = true;
     contexts = ["Use the project's development environment."];
     settings.tui.status_line = ["current-dir"];
-    tca-settings.model_provider = "tca";
+    homes.wcy = {}; # codex-wcy 使用 ~/.codex-wcy
+    homes.tca.settings.model_provider = "tca";
   };
 }
 ```

@@ -11,7 +11,7 @@
   upstream = options.programs.codex;
 
   # Upstream renders the official home. Reuse its common file sources and
-  # MCP renderer for the isolated TCA home, while keeping both configs mutable.
+  # MCP renderer for additional isolated homes, keeping all configs mutable.
 
   mirrored-codex-options = self.lib.options.mirror-options {
     inherit upstream;
@@ -22,6 +22,9 @@ in {
     (lib.mkRenamedOptionModule
       ["my" "codex" "custom-instructions"]
       ["my" "codex" "context"])
+    (lib.mkRenamedOptionModule ["my" "codex" "tca-settings"] ["my" "codex" "homes" "tca" "settings"])
+    (lib.mkRenamedOptionModule ["my" "codex" "tca-hooks"] ["my" "codex" "homes" "tca" "hooks"])
+    (lib.mkRenamedOptionModule ["my" "codex" "tca-removed-paths"] ["my" "codex" "homes" "tca" "removed-paths"])
   ];
 
   options.my.codex =
@@ -63,28 +66,46 @@ in {
         '';
       };
 
-      tca-hooks = lib.mkOption {
-        type = upstream.hooks.type;
-        default = cfg.hooks;
-        description = "Hooks installed in ~/.codex-tca/hooks.json. Defaults to the shared hooks; override to identify TCA notifications separately.";
+      homes = lib.mkOption {
+        default = {};
+        description = "Additional isolated homes. Each name creates codex-<name> using ~/.codex-<name>, inheriting declarative config, instructions, skills, rules, profiles, and completions.";
+        type = lib.types.attrsOf (lib.types.submodule ({name, ...}: {
+          options = {
+            settings = lib.mkOption {
+              type = (pkgs.formats.toml {}).type;
+              default = {};
+              description = "Settings merged over the shared declarative config, independently of runtime settings in other homes.";
+            };
+            hooks = lib.mkOption {
+              type = upstream.hooks.type;
+              default = cfg.hooks-for-home "${config.home.homeDirectory}/.codex-${name}";
+              description = "Hooks for this home; defaults to hooks-for-home applied to its absolute path.";
+            };
+            removed-paths = lib.mkOption {
+              type = lib.types.listOf (lib.types.listOf lib.types.str);
+              default = cfg.removed-paths;
+              description = "TOML paths removed after merging shared and home-specific settings.";
+            };
+          };
+        }));
       };
 
-      tca-settings = lib.mkOption {
-        type = (pkgs.formats.toml {}).type;
-        default = {};
-        description = "Provider-specific settings merged with shared settings into ~/.codex-tca/config.toml. Runtime model choices are preserved when not declared here.";
+      hooks-for-home = lib.mkOption {
+        type = lib.types.functionTo upstream.hooks.type;
+        default = _: cfg.hooks;
+        description = "Build hooks for an additional home's absolute path. Defaults to the shared hooks.";
+      };
+
+      home-directories = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        readOnly = true;
+        description = "Absolute paths of the official and additional homes, for notification and relay consumers.";
       };
 
       removed-paths = lib.mkOption {
         type = lib.types.listOf (lib.types.listOf lib.types.str);
         default = [];
-        description = "Obsolete TOML paths removed from the official Codex config during activation.";
-      };
-
-      tca-removed-paths = lib.mkOption {
-        type = lib.types.listOf (lib.types.listOf lib.types.str);
-        default = [];
-        description = "Obsolete or official-only TOML paths removed from the TCA Codex config during activation.";
+        description = "Obsolete TOML paths removed from the official Codex config during activation; inherited by additional homes unless overridden.";
       };
 
       profile-removed-paths = lib.mkOption {
@@ -119,9 +140,6 @@ in {
     has-config-source = lib.hasAttrByPath [config-target "source"] config.home.file;
     config-source = lib.getAttrFromPath [config-target "source"] config.home.file;
 
-    tca-target = ".codex-tca";
-    tca-home = "${config.home.homeDirectory}/${tca-target}";
-    tca-config-path = "${tca-home}/config.toml";
     codex-lib = import "${inputs.home-manager}/modules/programs/codex/lib.nix" {inherit lib pkgs;};
     # Copy individual declarative assets, never mutable directories or auth/state.
     common-files =
@@ -129,18 +147,31 @@ in {
       ++ lib.optional (cfg.contextOverride != null) "AGENTS.override.md"
       ++ map (name: "skills/${name}") (lib.attrNames (codex-lib.mkSkillSources cfg.skills))
       ++ map (name: "rules/${name}.rules") (lib.attrNames cfg.rules);
-    tca-common-files = lib.genAttrs common-files (name: let
+    common-sources = lib.genAttrs common-files (name: let
       file = config.home.file."${config-dir}/${name}";
     in {
       inherit (file) source recursive;
     });
-    tca-source = pkgs.runCommand "codex-tca-config.toml" {} ''
-      ${lib.getExe pkgs.yj} -tj < ${config-source} > common.json
-      ${lib.getExe pkgs.yj} -tj < ${toml-format.generate "codex-tca-settings" cfg.tca-settings} > tca.json
-      ${lib.getExe pkgs.jq} -s \
-        '.[0] * .[1] | delpaths(${builtins.toJSON cfg.tca-removed-paths})' \
-        common.json tca.json | ${lib.getExe pkgs.yj} -jt > "$out"
-    '';
+    extra-homes =
+      lib.mapAttrs (name: home: let
+        target = ".codex-${name}";
+        path = "${config.home.homeDirectory}/${target}";
+      in {
+        inherit target path;
+        inherit (home) hooks removed-paths;
+        package = pkgs.writeShellScriptBin "codex-${name}" ''
+          export CODEX_HOME=${lib.escapeShellArg path}
+          exec ${lib.getExe cfg.package} "$@"
+        '';
+        source = pkgs.runCommand "codex-${name}-config.toml" {} ''
+          ${lib.getExe pkgs.yj} -tj < ${config-source} > common.json
+          ${lib.getExe pkgs.yj} -tj < ${toml-format.generate "codex-${name}-settings" home.settings} > home.json
+          ${lib.getExe pkgs.jq} -s \
+            '.[0] * .[1] | delpaths(${builtins.toJSON home.removed-paths})' \
+            common.json home.json | ${lib.getExe pkgs.yj} -jt > "$out"
+        '';
+      })
+      cfg.homes;
     codex-openai = pkgs.symlinkJoin {
       name = "codex-openai-${lib.getVersion cfg.package}";
       paths = [cfg.package];
@@ -161,11 +192,6 @@ in {
       ++ lib.optional (cfg.hooks != {}) "hooks.json"
       ++ lib.optional (lib.isPath cfg.hooks && lib.pathIsDirectory cfg.hooks) "hooks"
       ++ map (name: "${name}.config.toml") (lib.attrNames cfg.profiles);
-    codex-tca = pkgs.writeShellScriptBin "codex-tca" ''
-      export CODEX_HOME=${lib.escapeShellArg tca-home}
-      exec ${lib.getExe cfg.package} "$@"
-    '';
-
     # Codex writes to its profile files too, so they get the same mutable
     # treatment as config.toml: Home Manager only builds the TOML, and the
     # activation merge below installs it over whatever is on disk.
@@ -199,6 +225,15 @@ in {
       );
   in
     lib.mkIf cfg.enable {
+      assertions = [
+        {
+          assertion = lib.all (name: name != "openai" && builtins.match "[a-z0-9][a-z0-9-]*" name != null) (lib.attrNames cfg.homes);
+          message = "my.codex.homes names must use lowercase letters, digits or hyphens, and cannot be openai (reserved for codex).";
+        }
+      ];
+
+      my.codex.home-directories = [official-home] ++ map (home: home.path) (lib.attrValues extra-homes);
+
       my.codex.context = lib.mkIf (context-chunks != []) (
         lib.concatStringsSep "\n\n" context-chunks
       );
@@ -207,21 +242,19 @@ in {
         {
           enable = true;
         }
-        // removeAttrs cfg ["enable" "custom-instructions" "contexts" "removed-paths" "tca-settings" "tca-hooks" "tca-removed-paths" "profile-removed-paths"]
+        // lib.getAttrs (lib.attrNames mirrored-codex-options) cfg
         // {package = codex-openai;};
 
       # Keep Codex config mutable because Codex writes trust/bookkeeping state to
       # config.toml at runtime. See:
       # https://github.com/nix-community/home-manager/issues/9397
-      programs.zsh.initContent = lib.mkAfter ''
-        compdef _codex codex-tca
-      '';
+      programs.zsh.initContent = lib.mkAfter (lib.concatMapStringsSep "\n" (name: "compdef _codex codex-${name}") (lib.attrNames extra-homes));
 
       home = {
-        packages = [codex-tca];
+        packages = map (home: home.package) (lib.attrValues extra-homes);
         sessionVariables = {
           CODEX_HOME = lib.mkForce official-home;
-          CODEX_NOTIFY_HOMES = "${official-home}:${tca-home}";
+          CODEX_NOTIFY_HOMES = lib.concatStringsSep ":" cfg.home-directories;
         };
         file =
           {
@@ -235,24 +268,26 @@ in {
           // lib.mapAttrs'
           (_: profile: lib.nameValuePair profile.target {enable = lib.mkForce false;})
           profile-files
-          // lib.mapAttrs' (name: file: lib.nameValuePair "${tca-target}/${name}" file) tca-common-files
-          // lib.optionalAttrs (cfg.tca-hooks != {}) {
-            "${tca-target}/hooks.json".source =
-              if lib.hm.strings.isPathLike cfg.tca-hooks
-              then
-                (
-                  if lib.isPath cfg.tca-hooks && lib.pathIsDirectory cfg.tca-hooks
-                  then cfg.tca-hooks + "/hooks.json"
-                  else cfg.tca-hooks
-                )
-              else (pkgs.formats.json {}).generate "codex-tca-hooks" {hooks = cfg.tca-hooks;};
-          }
-          // lib.optionalAttrs (lib.isPath cfg.tca-hooks && lib.pathIsDirectory cfg.tca-hooks) {
-            "${tca-target}/hooks" = {
-              source = cfg.tca-hooks;
-              recursive = true;
-            };
-          };
+          // lib.concatMapAttrs (name: home:
+            lib.mapAttrs' (file-name: file: lib.nameValuePair "${home.target}/${file-name}" file) common-sources
+            // lib.optionalAttrs (home.hooks != {}) {
+              "${home.target}/hooks.json".source =
+                if lib.hm.strings.isPathLike home.hooks
+                then
+                  (
+                    if lib.isPath home.hooks && lib.pathIsDirectory home.hooks
+                    then home.hooks + "/hooks.json"
+                    else home.hooks
+                  )
+                else (pkgs.formats.json {}).generate "codex-${name}-hooks" {hooks = home.hooks;};
+            }
+            // lib.optionalAttrs (lib.isPath home.hooks && lib.pathIsDirectory home.hooks) {
+              "${home.target}/hooks" = {
+                source = home.hooks;
+                recursive = true;
+              };
+            })
+          extra-homes;
 
         activation =
           lib.mapAttrs'
@@ -271,17 +306,21 @@ in {
               removed-paths = cfg.removed-paths;
             };
           }
-          // {
-            mutable-codex-tca-config = lib.hm.dag.entryAfter ["writeBoundary"] (
-              self.lib.mutable-config.mk-mutable-merge {
-                inherit pkgs;
-                format = "toml";
-                path = tca-config-path;
-                source = tca-source;
-                removed-paths = cfg.tca-removed-paths;
-              }
-            );
-          };
+          // lib.concatMapAttrs (name: home:
+            {
+              "mutable-codex-${name}-config" = mk-mutable-merge {
+                path = "${home.path}/config.toml";
+                inherit (home) source removed-paths;
+              };
+            }
+            // lib.mapAttrs' (profile-name: profile:
+              lib.nameValuePair "mutable-codex-${name}-profile-${profile-name}" (mk-mutable-merge {
+                path = "${home.path}/${profile-name}.config.toml";
+                inherit (profile) source;
+                removed-paths = cfg.profile-removed-paths.${profile-name} or [];
+              }))
+            profile-files)
+          extra-homes;
       };
     };
 }

@@ -64,7 +64,7 @@ in {
 
   home.shellAliases."codex-list-sessions" = ''
     (
-      for codex_home in ${lib.escapeShellArgs ["${config.home.homeDirectory}/.codex-openai" "${config.home.homeDirectory}/.codex-tca"]}; do
+      for codex_home in ${lib.escapeShellArgs config.my.codex.home-directories}; do
         if [ -f "$codex_home/state_5.sqlite" ]; then
           printf '%s\n' "$codex_home"
           ${lib.getExe pkgs.sqlite} -readonly -header -column "$codex_home/state_5.sqlite" \
@@ -141,10 +141,11 @@ in {
           config.my.lsp.servers);
     };
 
-    # The official and TCA homes share tools and instructions, but their
+    # All homes share declarative tools and instructions, but their
     # provider routes, model defaults, credentials, and sessions are independent.
     settings.model_provider = "openai";
-    tca-settings = {
+    homes.wcy = {};
+    homes.tca.settings = {
       model_provider = "tca";
       model_catalog_json = pkgs.writeText "codex-tca-models.json" (builtins.toJSON {
         models =
@@ -189,7 +190,7 @@ in {
       ["profile"]
       ["profiles" "tca"]
     ];
-    tca-removed-paths = [
+    homes.tca.removed-paths = [
       ["forced_chatgpt_workspace_id"]
       ["chatgpt_base_url"]
       ["openai_base_url"]
@@ -209,6 +210,6 @@ in {
     # teardown with a constant reason; stale route state can be removed with
     # `codex-notify cleanup`, using Codex's thread database as source of truth.
     hooks = mk-hooks "${config.home.homeDirectory}/.codex-openai";
-    tca-hooks = mk-hooks "${config.home.homeDirectory}/.codex-tca";
+    hooks-for-home = mk-hooks;
   };
 }

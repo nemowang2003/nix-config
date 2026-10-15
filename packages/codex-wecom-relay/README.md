@@ -13,16 +13,20 @@ Cancelling a callback closes its app-server connection.
 
 ## Independent Codex homes
 
-Every host provides two commands, with the same Codex binary and completion:
+Every host provides three commands, with the same Codex binary and completion:
 
 ```sh
 codex                # ~/.codex-openai, official OpenAI configuration
 codex-tca            # ~/.codex-tca, TCA gateway and model catalog
+codex-wcy            # ~/.codex-wcy, shared configuration and default provider
 ```
 
-Codex automatically starts or reuses a daemon for each home. The two homes
+Codex automatically starts or reuses a daemon for each home. The homes
 keep independent configuration, authentication, model defaults and sessions.
-`codex-tca` sets `CODEX_HOME`; it does not pass `--profile` or `--remote`.
+Additional homes declared in `my.codex.homes` are automatically registered with
+notification maintenance and the dt-w01 relay.
+
+`codex-tca` and `codex-wcy` set `CODEX_HOME`; neither passes `--profile` or `--remote`.
 No app-server systemd services are installed.
 
 Each home's Stop hook passes its own `--codex-home` to `codex-notify`. The

@@ -27,17 +27,16 @@ in {
         "XDG_CONFIG_HOME=${config.xdg.configHome}"
         "XDG_STATE_HOME=${config.xdg.stateHome}"
       ];
-      ExecStart = lib.escapeShellArgs [
-        relay
-        "--config"
-        "${config.xdg.configHome}/codex-wecom-relay/wecom.json"
-        "--codex-bin"
-        (lib.getExe config.my.codex.package)
-        "--codex-home"
-        "${user-home}/.codex-openai"
-        "--codex-home"
-        "${user-home}/.codex-tca"
-      ];
+      ExecStart = lib.escapeShellArgs (
+        [
+          relay
+          "--config"
+          "${config.xdg.configHome}/codex-wecom-relay/wecom.json"
+          "--codex-bin"
+          (lib.getExe config.my.codex.package)
+        ]
+        ++ lib.concatMap (home: ["--codex-home" home]) config.my.codex.home-directories
+      );
       Restart = "on-failure";
       RestartSec = "5s";
       KillSignal = "SIGINT";
