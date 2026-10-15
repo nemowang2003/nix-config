@@ -60,3 +60,7 @@ queue order.
 Changing this cross-client ordering requires a shared queue in Codex TUI and
 app-server, or an idle-only turn submission API for the TUI. This relay cannot
 inspect the TUI's local Tab queue.
+
+The relay and notification hook use absolute Nix store paths. The relay is not
+installed into the Home Manager PATH; `codex-notify` remains available there for
+manual routing with `pick`, `route <thread-id> <name>`, and `cleanup`.

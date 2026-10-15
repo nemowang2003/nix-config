@@ -92,7 +92,7 @@ in {
 
       reserved-home-names = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = ["openai" "list-sessions" "generate-profile" "notify" "wecom-relay" "home-migrate"];
+        default = ["openai" "forall" "list-sessions" "generate-profile" "notify"];
         description = "Reserved home names whose codex-<name> commands conflict with the official home or helper commands. Extend this list when adding helpers.";
       };
 
@@ -192,9 +192,9 @@ in {
         chmod +x "$out/bin/codex"
       '';
     };
-    forall-codex = pkgs.writeShellScriptBin "forall-codex" ''
+    codex-forall = pkgs.writeShellScriptBin "codex-forall" ''
       if [ "$#" -eq 0 ]; then
-        echo 'usage: forall-codex <codex arguments...>' >&2
+        echo 'usage: codex-forall <codex arguments...>' >&2
         exit 2
       fi
       status=0
@@ -203,7 +203,7 @@ in {
           :
         else
           result=$?
-          printf 'forall-codex: %s exited with status %s\n' "''${command##*/}" "$result" >&2
+          printf 'codex-forall: %s exited with status %s\n' "''${command##*/}" "$result" >&2
           status=1
         fi
       done
@@ -272,10 +272,10 @@ in {
       # Keep Codex config mutable because Codex writes trust/bookkeeping state to
       # config.toml at runtime. See:
       # https://github.com/nix-community/home-manager/issues/9397
-      programs.zsh.initContent = lib.mkAfter ("compdef _codex forall-codex\n" + lib.concatMapStringsSep "\n" (name: "compdef _codex codex-${name}") (lib.attrNames extra-homes));
+      programs.zsh.initContent = lib.mkAfter ("compdef _codex codex-forall\n" + lib.concatMapStringsSep "\n" (name: "compdef _codex codex-${name}") (lib.attrNames extra-homes));
 
       home = {
-        packages = [forall-codex] ++ map (home: home.package) (lib.attrValues extra-homes);
+        packages = [codex-forall] ++ map (home: home.package) (lib.attrValues extra-homes);
         sessionVariables = {
           CODEX_HOME = lib.mkForce official-home;
           CODEX_NOTIFY_HOMES = lib.concatStringsSep ":" cfg.home-directories;

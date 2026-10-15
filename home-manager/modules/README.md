@@ -50,20 +50,23 @@ activation 只维护声明的配置，不检查、猜测或迁移旧 home，也�
 新增 home 只需声明 `my.codex.homes.<名称> = {};`，即生成 `codex-<名称>` 命令，
 固定设置 `CODEX_HOME=~/.codex-<名称>` 后调用原始 Codex 二进制，并复用 `codex` 的 zsh 补全。
 名称使用小写字母、数字和连字符；`openai` 保留给官方 home。
-`reserved-home-names` 还保留 `list-sessions`、`generate-profile`、`notify`、
-`wecom-relay`、`home-migrate` 等辅助命令后缀；新增辅助命令时扩展此列表，避免覆盖启动器。
+`reserved-home-names` 还保留 `forall`、`list-sessions`、`generate-profile`、`notify` 等
+PATH 中辅助命令的后缀；新增辅助命令时扩展此列表，避免覆盖启动器。
+`codex-notify` 保留在 PATH 中，方便使用 `pick`、`route`、`cleanup` 等手动操作。
+`codex-wecom-relay` 仅通过 Nix store 绝对路径引用，`codex-home-migrate` 仅供手动
+通过 `nix run` 运行，二者不安装进 PATH，也不占用 home 名称。
 每个额外 home 继承声明的 instructions、skills、rules、MCP、配置与普通 profiles。
 认证、session、运行时模型选择和自行安装的 plugins/skills 各自独立，不复制其他 home 的运行时文件。
 WCY 仅声明空 home，使用公共配置与默认 OpenAI provider；TCA 在 `homes.tca.settings`
 中覆盖 provider 和 model catalog，不影响其他 home。
 
-`forall-codex` 按官方 home、额外 home 名称排序的顺序调用各启动器，原样传递参数，
+`codex-forall` 按官方 home、额外 home 名称排序的顺序调用各启动器，原样传递参数，
 并复用 Codex 的 zsh 补全。每个命令执行一次，某个失败后仍执行其余命令；
 全部成功返回 0，否则返回 1；不带参数显示用法并返回 2。例如：
 
 ```sh
-forall-codex app-server daemon stop
-forall-codex app-server daemon update --from-cli --yes
+codex-forall app-server daemon stop
+codex-forall app-server daemon update --from-cli --yes
 ```
 
 更新命令会替换各 home 的 daemon 包并可能打断正在执行的任务；activation 不自动运行这些命令。
