@@ -281,14 +281,16 @@ in {
           CODEX_NOTIFY_HOMES = lib.concatStringsSep ":" cfg.home-directories;
         };
         file =
-          {
-            ${config-target}.enable = lib.mkForce false;
-          }
-          // lib.listToAttrs (map (name:
+          lib.listToAttrs (map (name:
             lib.nameValuePair "${config-dir}/${name}" {
               target = "${official-target}/${name}";
             })
           official-files)
+          # Apply after target redirection: merging attribute sets with //
+          # replaces entire entries, including a previously set enable=false.
+          // {
+            ${config-target}.enable = lib.mkForce false;
+          }
           // lib.mapAttrs'
           (_: profile: lib.nameValuePair profile.target {enable = lib.mkForce false;})
           profile-files

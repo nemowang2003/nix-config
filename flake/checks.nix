@@ -31,6 +31,21 @@
         audio-transcribe-imports = inputs.audio-transcribe.checks.${pkgs.stdenv.hostPlatform.system}.imports;
         llama-on-demand-proxy-import = inputs.llama-on-demand.checks.${pkgs.stdenv.hostPlatform.system}.proxy-import;
         llama-on-demand-unit = inputs.llama-on-demand.checks.${pkgs.stdenv.hostPlatform.system}.unit;
+        codex-mutable-config = let
+          valid = lib.all (home: let
+            c = home.config;
+            codex = c.my.codex;
+            mutable-targets = lib.concatMap (directory:
+              map (name: "${lib.removePrefix "${c.home.homeDirectory}/" directory}/${name}")
+              (["config.toml"] ++ map (name: "${name}.config.toml") (lib.attrNames codex.profiles)))
+            codex.home-directories;
+          in
+            !codex.enable || lib.all (file: !file.enable || !(lib.elem file.target mutable-targets)) (lib.attrValues c.home.file)) (lib.attrValues self.homeConfigurations);
+        in
+          assert lib.assertMsg valid "Codex mutable TOML files must not be installed as Home Manager symlinks";
+            pkgs.runCommand "codex-mutable-config" {} ''
+              touch "$out"
+            '';
         host-eval = assert builtins.deepSeq ([self.user-pubkeys] ++ host-evaluations) true;
           pkgs.runCommand "host-eval" {} ''
             touch "$out"
