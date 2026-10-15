@@ -24,7 +24,7 @@
 
   codex-generate-profile = pkgs.writeShellApplication {
     name = "codex-generate-profile";
-    runtimeInputs = [pkgs.yj pkgs.jq];
+    runtimeInputs = [pkgs.yj pkgs.jq pkgs.coreutils];
     text = ''
       language=''${1:-}
       project_dir=''${2:-.}
@@ -37,6 +37,11 @@
       servers=$(jq -cn --arg lang "$language" --argjson all '${languages-json}' '$all[$lang] // empty')
       if [ -z "$servers" ]; then
         echo "codex-generate-profile: unknown language '$language' (supported: ${lib.concatStringsSep ", " language-names})" >&2
+        exit 1
+      fi
+
+      if [ "$(realpath -m -- "$project_dir")" = ${lib.escapeShellArg config.home.homeDirectory} ]; then
+        echo 'codex-generate-profile: refusing to create ~/.codex/config.toml; use my.codex.settings for global configuration, or select a project directory.' >&2
         exit 1
       fi
 

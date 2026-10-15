@@ -7,6 +7,36 @@
   ...
 }: let
   models-lib = self.lib.models;
+  codex-list-sessions = pkgs.writeShellApplication {
+    name = "codex-list-sessions";
+    runtimeInputs = [pkgs.jq pkgs.sqlite];
+    text = ''
+      if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != --stdout ]; }; then
+        echo 'usage: codex-list-sessions [--stdout]' >&2
+        exit 2
+      fi
+      registry="''${XDG_CONFIG_HOME:-${config.xdg.configHome}}/codex-notify/homes.json"
+      homes_text=$(jq -er 'if type == "array" and length > 0 and all(.[]; type == "string" and startswith("/")) then .[] else error("invalid Codex home registry") end' "$registry")
+      mapfile -t homes <<< "$homes_text"
+      list_sessions() {
+        local codex_home database
+        for codex_home in "''${homes[@]}"; do
+          database="$codex_home/state_5.sqlite"
+          if [ -f "$database" ]; then
+            printf '%s\n' "$codex_home"
+            sqlite3 -readonly -header -column "$database" \
+              "SELECT id, cwd, title FROM threads ORDER BY updated_at DESC;"
+          fi
+        done
+      }
+      if [ "''${1:-}" = --stdout ]; then
+        list_sessions
+      else
+        read -r -a editor <<< "''${EDITOR:-vi}"
+        list_sessions | "''${editor[@]}"
+      fi
+    '';
+  };
   mk-hooks = codex-home: {
     Stop = [
       {
@@ -58,21 +88,13 @@ in {
       mode = "0600";
     };
 
+  # Read on each invocation, so existing shells need not refresh sessionVariables.
+  xdg.configFile."codex-notify/homes.json".text = builtins.toJSON config.my.codex.home-directories;
+
   home.packages = [
     self.packages.${pkgs.stdenv.hostPlatform.system}.codex-notify
+    codex-list-sessions
   ];
-
-  home.shellAliases."codex-list-sessions" = ''
-    (
-      for codex_home in ${lib.escapeShellArgs config.my.codex.home-directories}; do
-        if [ -f "$codex_home/state_5.sqlite" ]; then
-          printf '%s\n' "$codex_home"
-          ${lib.getExe pkgs.sqlite} -readonly -header -column "$codex_home/state_5.sqlite" \
-            "SELECT id, cwd, title FROM threads ORDER BY updated_at DESC;"
-        fi
-      done
-    ) | $EDITOR
-  '';
 
   my.codex = {
     enable = true;

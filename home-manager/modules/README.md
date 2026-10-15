@@ -90,8 +90,21 @@ codex-forall app-server daemon update --from-cli --yes
 `homes.<名称>.removed-paths`、`profile-removed-paths` 分别清理官方配置、额外 home 配置和
 普通 profile 的旧路径。旧 TCA profile 的模型偏好和历史如何迁移，也由用户手动决定。
 
-只读 `home-directories` 列出所有 home 的绝对路径。`CODEX_NOTIFY_HOMES`、session 列表、
-通知补全与 dt-w01 relay 自动使用该列表，无需在新增 home 时逐个修改。
+只读 `home-directories` 列出所有 home 的绝对路径。session 列表与 dt-w01 relay
+自动使用该列表；通知工具与补全每次调用都读取由它生成的
+`$XDG_CONFIG_HOME/codex-notify/homes.json`，所以旧 shell 中的环境变量不会漏掉新增 home。
+没有此清单时，独立运行的通知工具回退到 `CODEX_NOTIFY_HOMES`，最后才是单个
+`CODEX_HOME`（默认 `.codex-openai`）；不再猜测固定的 TCA/WCY 路径。
+清单或数据库无法读取时，`cleanup` 保留已有路由，避免误删。
+`codex-notify pick` 在每个 session 旁显示所属 home；路由仍按全局唯一 thread UUID 保存。
+手动复制同一 UUID 到多个 home 会共享通知路由，relay 会拒绝旧 token 的歧义查询。
+
+`codex-list-sessions` 是读取同一清单的可执行命令，聚合所有 home，按 home 分组并显示
+目录、UUID、标题，默认交给 `$EDITOR` 查看，`--stdout` 输出到标准输出。
+从旧 alias 升级后，需要重新打开 shell，或执行一次 `unalias codex-list-sessions`。
+`codex-generate-profile <language> [project-dir]` 修改项目的 `.codex/config.toml`，
+用于全部 home；这里的 `.codex` 是项目层配置，不能改成 `.codex-openai` 或 `.codex-tca`。
+该命令拒绝以 `$HOME` 为项目目录；全局设置应通过 `my.codex.settings` 声明。
 dt-w01 的 relay 使用通知里的 home；旧 token 回退到数据库查找。回复时只启动或复用所属 home 的 daemon，无需 app-server systemd 服务。
 
 ```nix

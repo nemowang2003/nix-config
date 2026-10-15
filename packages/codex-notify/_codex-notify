@@ -29,10 +29,17 @@ function _codex-notify {
           case $state in
             thread)
               local -a homes
-              if [[ -n $CODEX_NOTIFY_HOMES ]]; then
+              local registry="${XDG_CONFIG_HOME:-$HOME/.config}/codex-notify/homes.json"
+              if [[ -e $registry || -L $registry ]]; then
+                homes=("${(@f)$(@jq@ -er 'if type == "array" and length > 0 and all(.[]; type == "string" and startswith("/")) then .[] else error("invalid Codex home registry") end' "$registry" 2>/dev/null)}")
+                if (( $? != 0 )); then
+                  _message 'cannot read Codex home registry'
+                  return 1
+                fi
+              elif [[ -n $CODEX_NOTIFY_HOMES ]]; then
                 homes=("${(@s.:.)CODEX_NOTIFY_HOMES}")
               else
-                homes=("${CODEX_HOME:-$HOME/.codex-openai}" "$HOME/.codex-tca")
+                homes=("${CODEX_HOME:-$HOME/.codex-openai}")
               fi
               local codex_home database
               for codex_home in "${homes[@]}"; do

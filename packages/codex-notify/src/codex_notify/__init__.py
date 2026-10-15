@@ -59,6 +59,7 @@ state_dir = xdg_dir("XDG_STATE_HOME", "~/.local/state", "codex-notify")
 log_dir = xdg_dir("XDG_CACHE_HOME", "~/.cache", "codex-notify")
 config_dir = xdg_dir("XDG_CONFIG_HOME", "~/.config", "codex-notify")
 routes_file = os.path.join(config_dir, "routes.json")
+homes_file = os.path.join(config_dir, "homes.json")
 reply_outbox = os.path.join(
     xdg_dir("XDG_STATE_HOME", "~/.local/state", "codex-wecom-relay"), "outbox.jsonl"
 )
@@ -121,16 +122,24 @@ def save_state(thread_id, state):
 
 
 def codex_db_paths():
-    configured = os.environ.get("CODEX_NOTIFY_HOMES")
-    homes = (
-        configured.split(os.pathsep)
-        if configured
-        else [
-            os.environ.get("CODEX_HOME", os.path.expanduser("~/.codex-openai")),
-            os.path.expanduser("~/.codex-tca"),
-        ]
-    )
-    return [Path(home).expanduser().resolve() / "state_5.sqlite" for home in dict.fromkeys(homes)]
+    registry = Path(homes_file)
+    if registry.exists() or registry.is_symlink():
+        homes = json.loads(registry.read_text(encoding="utf-8"))
+        if (
+            not isinstance(homes, list)
+            or not homes
+            or not all(isinstance(home, str) and Path(home).is_absolute() for home in homes)
+        ):
+            raise ValueError(f"invalid Codex home registry: {registry}")
+    else:
+        configured = os.environ.get("CODEX_NOTIFY_HOMES")
+        homes = (
+            configured.split(os.pathsep)
+            if configured
+            else [os.environ.get("CODEX_HOME", os.path.expanduser("~/.codex-openai"))]
+        )
+    databases = [Path(home).expanduser().resolve() / "state_5.sqlite" for home in homes]
+    return list(dict.fromkeys(databases))
 
 
 def read_threads():
@@ -140,18 +149,19 @@ def read_threads():
             continue
         with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as connection:
             rows.extend(
-                connection.execute(
+                (*row, str(database.parent))
+                for row in connection.execute(
                     "SELECT id, COALESCE(title, '(untitled)'), updated_at FROM threads"
-                ).fetchall()
+                )
             )
     return sorted(rows, key=lambda row: row[2], reverse=True)
 
 
 def known_thread_hashes():
-    """Union of both homes; an unreadable database prevents pruning any routes."""
+    """Union of registered homes; unreadable registry or DB prevents pruning."""
     try:
         return {key_for(row[0]) for row in read_threads()}
-    except sqlite3.Error:
+    except (sqlite3.Error, OSError, ValueError):
         return None
 
 
@@ -451,7 +461,7 @@ def cmd_route(args):
 def cmd_pick():
     try:
         rows = read_threads()
-    except sqlite3.Error as error:
+    except (sqlite3.Error, OSError, ValueError) as error:
         print(f"cannot read Codex session databases: {error}", file=sys.stderr)
         return 1
     if not rows:
@@ -460,7 +470,10 @@ def cmd_pick():
     # Thread titles can contain newlines, so never rely on fzf's line layout
     # to carry the id back. Feed one line per thread with a TAB separator and
     # a flattened title; parse the id from the part before the first TAB.
-    lines = [f"{tid}\t{re.sub(r'\s+', ' ', title).strip()}" for tid, title, _updated in rows]
+    lines = [
+        f"{tid}\t[{Path(home).name}] {re.sub(r'\s+', ' ', title).strip()}"
+        for tid, title, _updated, home in rows
+    ]
     selection = fzf_select("session> ", "\n".join(lines))
     if not selection:
         return 0

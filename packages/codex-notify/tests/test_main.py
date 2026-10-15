@@ -10,6 +10,64 @@ import codex_notify as notify
 
 
 class NotifyTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        registry = mock.patch.object(notify, "homes_file", str(Path(directory.name) / "homes.json"))
+        registry.start()
+        self.addCleanup(registry.stop)
+
+    def test_registry_overrides_stale_shell_environment_and_reloads(self):
+        registry = Path(notify.homes_file)
+        with mock.patch.dict(os.environ, {"CODEX_NOTIFY_HOMES": "/old/official:/old/tca"}):
+            registry.write_text(json.dumps(["/new/official", "/new/tca", "/new/wcy", "/new/wcy"]))
+            self.assertEqual(
+                notify.codex_db_paths(),
+                [
+                    Path(home) / "state_5.sqlite"
+                    for home in ["/new/official", "/new/tca", "/new/wcy"]
+                ],
+            )
+            registry.write_text(json.dumps(["/new/official", "/new/future"]))
+            self.assertEqual(notify.codex_db_paths()[-1], Path("/new/future/state_5.sqlite"))
+
+    def test_invalid_registry_prevents_route_cleanup(self):
+        for content in ["{", "[]", '["relative/home"]', '{"homes": []}']:
+            with self.subTest(content=content), tempfile.TemporaryDirectory() as directory:
+                Path(notify.homes_file).write_text(content)
+                with mock.patch.object(notify, "state_dir", directory):
+                    notify.save_state("keep", {"profile": "me"})
+                    notify.cleanup_orphaned_state()
+                    self.assertTrue(Path(notify.state_path("keep")).exists())
+
+    def test_broken_registry_symlink_prevents_route_cleanup(self):
+        Path(notify.homes_file).symlink_to(Path(notify.homes_file).with_name("missing.json"))
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.object(notify, "state_dir", directory):
+                notify.save_state("keep", {"profile": "me"})
+                notify.cleanup_orphaned_state()
+                self.assertTrue(Path(notify.state_path("keep")).exists())
+
+    def test_pick_labels_homes_and_keeps_thread_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            homes = [
+                Path(directory) / name for name in [".codex-openai", ".codex-tca", ".codex-wcy"]
+            ]
+            for index, home in enumerate(homes):
+                self.make_database(home, f"thread-{index}")
+            Path(notify.homes_file).write_text(json.dumps(list(map(str, homes))))
+            with (
+                mock.patch.object(
+                    notify, "fzf_select", side_effect=["thread-2\t[.codex-wcy] test", "me"]
+                ) as select,
+                mock.patch.object(notify, "load_routes", return_value={"me": {}}),
+                mock.patch.object(notify, "cmd_route", return_value=0) as route,
+            ):
+                self.assertEqual(notify.cmd_pick(), 0)
+                for home in homes:
+                    self.assertIn(f"[{home.name}] test", select.call_args_list[0].args[1])
+                route.assert_called_once_with(["route", "thread-2", "me"])
+
     def test_markdown_preserves_structure_and_collapses_blank_lines(self):
         content = "  first  \n\n\nsecond  \n"
         self.assertEqual(notify.wecom_markdown(content), "first\n\nsecond")
