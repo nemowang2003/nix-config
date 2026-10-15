@@ -17,14 +17,22 @@ async def async_items(items):
 
 
 class FakeWebSocket:
-    def __init__(self, error=None):
+    def __init__(self, error=None, relay=None):
         self.error = error
+        self.relay = relay
         self.messages = []
 
     async def send(self, message):
         if self.error:
             raise self.error
-        self.messages.append(json.loads(message))
+        payload = json.loads(message)
+        self.messages.append(payload)
+        if payload.get("cmd") == "aibot_respond_msg" and payload["body"].get("msgtype") == "stream":
+            ack = {"headers": payload["headers"], "errcode": 0}
+            if self.relay:
+                self.relay._resolve_command(ack)
+            elif isinstance(self, FakeCallbackWebSocket):
+                await self.incoming.put(json.dumps(ack))
 
 
 class FakeCallbackWebSocket(FakeWebSocket):
@@ -51,6 +59,402 @@ class FakeConnection:
 
 
 class RelayTests(unittest.IsolatedAsyncioTestCase):
+    def callback(self, relay, msgid="message", thread="thread", home_index=0):
+        token = relay._new_token(thread, str(relay.codex_homes[home_index]))
+        return {
+            "headers": {"req_id": msgid},
+            "body": {
+                "msgid": msgid,
+                "msgtype": "text",
+                "from": {"userid": "user"},
+                "quote": {"text": {"content": f"r#{token}"}},
+                "text": {"content": "继续"},
+            },
+        }
+
+    async def test_unknown_quote_never_falls_back_to_latest_notification(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            callback = self.callback(relay)
+            relay._last_push["user"] = {"token": relay._new_token("B")}
+            callback["body"]["quote"]["text"]["content"] = "A 的旧流式消息，没有 token"
+            with patch.object(relay, "_run_turn") as run:
+                ws = FakeWebSocket(relay=relay)
+                await relay._handle_callback(ws, callback)
+                run.assert_not_called()
+                self.assertIn("没有找到对应任务", ws.messages[-1]["body"]["markdown"]["content"])
+
+    async def test_stream_token_routes_to_a_even_after_b_completion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            callback = self.callback(relay, thread="A")
+            ws = FakeWebSocket(relay=relay)
+            app = relay_module.AppServer("unused")
+            with (
+                patch.object(relay, "_app_for_thread", return_value=app),
+                patch.object(app, "connect"),
+                patch.object(
+                    app,
+                    "run_turn",
+                    return_value=async_items(
+                        [("queued", None), ("delta", "A 的回答"), ("done", "completed")]
+                    ),
+                ),
+            ):
+                await relay._handle_callback(ws, callback)
+            contents = [m["body"]["stream"]["content"] for m in ws.messages]
+            tokens = []
+            for content in contents:
+                match = relay_module.TOKEN_RE.search(content)
+                assert match is not None
+                tokens.append(match.group(1))
+            self.assertEqual(len(set(tokens)), 1)
+            relay._last_push["user"] = {"token": relay._new_token("B")}
+            reply = self.callback(relay, msgid="reply")
+            reply["body"]["quote"]["text"]["content"] = contents[1]
+            with patch.object(relay, "_run_turn") as run:
+                await relay._handle_callback(ws, reply)
+                self.assertEqual(run.call_args.args[2], "A")
+                self.assertEqual(run.call_args.args[4], str(relay.codex_homes[0]))
+
+    async def test_rpc_deadline_includes_unending_notifications(self):
+        async def serve(ws):
+            request = json.loads(await ws.recv())
+            self.assertEqual(request["method"], "initialize")
+            await ws.send(json.dumps({"method": "unrelated", "params": {}}))
+            await ws.wait_closed()
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "rpc.sock")
+            async with await unix_serve(serve, path):
+                app = relay_module.AppServer(path)
+                await app.connect()
+                try:
+                    with patch.object(relay_module, "RPC_TIMEOUT", 0.03):
+                        with self.assertRaises(TimeoutError):
+                            await app.initialize()
+                finally:
+                    await app.close()
+
+    async def test_stalled_initialization_only_blocks_same_home_and_thread(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            stalled = asyncio.Event()
+            release = asyncio.Event()
+            starts = []
+
+            async def make_app(thread, home):
+                starts.append((str(home), thread))
+                app = relay_module.AppServer("unused")
+                app.connect = AsyncMock()
+
+                async def turn(*_args):
+                    if thread == "A":
+                        stalled.set()
+                        await release.wait()
+                    yield ("queued", None)
+                    yield ("done", "completed")
+
+                app.run_turn = Mock(side_effect=turn)
+                return app
+
+            with patch.object(relay, "_app_for_thread", side_effect=make_app):
+                first = asyncio.create_task(
+                    relay._handle_callback(
+                        FakeWebSocket(relay=relay), self.callback(relay, "first", "A")
+                    )
+                )
+                await asyncio.wait_for(stalled.wait(), 1)
+                same = asyncio.create_task(
+                    relay._handle_callback(
+                        FakeWebSocket(relay=relay), self.callback(relay, "same", "A")
+                    )
+                )
+                try:
+                    await asyncio.wait_for(
+                        relay._handle_callback(
+                            FakeWebSocket(relay=relay), self.callback(relay, "other-home", "B", 1)
+                        ),
+                        1,
+                    )
+                    await asyncio.wait_for(
+                        relay._handle_callback(
+                            FakeWebSocket(relay=relay), self.callback(relay, "other-thread", "C")
+                        ),
+                        1,
+                    )
+                    self.assertEqual(sum(thread == "A" for _, thread in starts), 1)
+                    self.assertFalse(same.done())
+                finally:
+                    release.set()
+                    await asyncio.gather(first, same)
+                self.assertEqual(sum(thread == "A" for _, thread in starts), 2)
+
+    async def test_rejected_submission_can_retry_same_msgid_after_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            callback = self.callback(relay)
+            for rejected in (True, False):
+                app = relay_module.AppServer("unused")
+                with (
+                    patch.object(relay, "_app_for_thread", return_value=app),
+                    patch.object(app, "connect"),
+                    patch.object(app, "initialize"),
+                    patch.object(app, "resume_thread"),
+                    patch.object(
+                        app,
+                        "queue_turn",
+                        side_effect=relay_module.AppServerRejected("rejected")
+                        if rejected
+                        else None,
+                        return_value={"queuedSubmission": {"id": "q"}},
+                    ) as enqueue,
+                    patch.object(app, "notifications", return_value=async_items([])),
+                    self.assertLogs("test", level="ERROR")
+                    if rejected
+                    else patch.object(relay.log, "exception"),
+                ):
+                    await relay._handle_callback(FakeWebSocket(relay=relay), callback)
+                    enqueue.assert_awaited_once()
+                relay = self.make_relay(directory)
+                self.assertEqual(
+                    relay._submissions["message"]["state"], "failed" if rejected else "accepted"
+                )
+            with patch.object(relay, "_app_for_thread") as start:
+                await relay._handle_callback(FakeWebSocket(relay=relay), callback)
+                start.assert_not_called()
+
+    async def test_lost_queue_ack_stays_unknown_and_never_retries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            callback = self.callback(relay)
+            app = relay_module.AppServer("unused")
+            ws = FakeWebSocket(relay=relay)
+
+            async def queue(*_args):
+                disk = json.loads(Path(relay.submissions_path).read_text())
+                self.assertEqual(disk["message"]["state"], "submitting")
+                raise TimeoutError("ack lost")
+
+            with (
+                patch.object(relay, "_app_for_thread", return_value=app),
+                patch.object(app, "connect"),
+                patch.object(app, "initialize"),
+                patch.object(app, "resume_thread"),
+                patch.object(app, "queue_turn", side_effect=queue),
+                self.assertLogs("test", level="ERROR"),
+            ):
+                await relay._handle_callback(ws, callback)
+            self.assertIn("提交结果未知", ws.messages[-1]["body"]["markdown"]["content"])
+            restarted = self.make_relay(directory)
+            with patch.object(restarted, "_app_for_thread") as start:
+                await restarted._handle_callback(ws, callback)
+                start.assert_not_called()
+            self.assertEqual(restarted._submissions["message"]["state"], "unknown")
+
+    async def test_progress_disconnect_preserves_acceptance(self):
+        async def notifications():
+            raise ConnectionError("lost progress")
+            yield
+
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            callback = self.callback(relay)
+            app = relay_module.AppServer("unused")
+            ws = FakeWebSocket(relay=relay)
+            with (
+                patch.object(relay, "_app_for_thread", return_value=app),
+                patch.object(app, "connect"),
+                patch.object(app, "initialize"),
+                patch.object(app, "resume_thread"),
+                patch.object(app, "queue_turn", return_value={"queuedSubmission": {"id": "q"}}),
+                patch.object(app, "notifications", side_effect=notifications),
+                self.assertLogs("test", level="ERROR"),
+            ):
+                await relay._handle_callback(ws, callback)
+            self.assertIn("已入队，进度连接断开", ws.messages[-1]["body"]["markdown"]["content"])
+            restarted = self.make_relay(directory)
+            self.assertEqual(restarted._submissions["message"]["submission_id"], "q")
+            with patch.object(restarted, "_app_for_thread") as start:
+                await restarted._handle_callback(ws, callback)
+                start.assert_not_called()
+
+    async def test_recovery_and_corrupt_ledger_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "submissions.json"
+            path.write_text(json.dumps({"A": {"state": "submitting"}, "B": {"state": "preparing"}}))
+            relay = self.make_relay(directory)
+            self.assertEqual(relay._submissions["A"]["state"], "unknown")
+            self.assertEqual(relay._submissions["B"]["state"], "failed")
+            path.write_text("broken")
+            with self.assertRaises(ValueError):
+                self.make_relay(directory)
+
+    async def test_cancellation_preserves_submission_certainty(self):
+        for accepted in (False, True):
+            with self.subTest(accepted=accepted), tempfile.TemporaryDirectory() as directory:
+                relay = self.make_relay(directory)
+                callback = self.callback(relay)
+                reached = asyncio.Event()
+                app = relay_module.AppServer("unused")
+
+                async def queue(*_args):
+                    if not accepted:
+                        reached.set()
+                        await asyncio.Event().wait()
+                    return {"queuedSubmission": {"id": "q"}}
+
+                async def notifications():
+                    reached.set()
+                    await asyncio.Event().wait()
+                    yield
+
+                with (
+                    patch.object(relay, "_app_for_thread", return_value=app),
+                    patch.object(app, "connect"),
+                    patch.object(app, "close") as close,
+                    patch.object(app, "initialize"),
+                    patch.object(app, "resume_thread"),
+                    patch.object(app, "queue_turn", side_effect=queue),
+                    patch.object(app, "notifications", side_effect=notifications),
+                ):
+                    running = asyncio.create_task(
+                        relay._handle_callback(FakeWebSocket(relay=relay), callback)
+                    )
+                    await asyncio.wait_for(reached.wait(), 1)
+                    running.cancel()
+                    await asyncio.gather(running, return_exceptions=True)
+                    close.assert_awaited_once()
+                self.assertFalse(any(lock.locked() for lock in relay._submission_locks.values()))
+                restarted = self.make_relay(directory)
+                self.assertEqual(
+                    restarted._submissions["message"]["state"],
+                    "accepted" if accepted else "unknown",
+                )
+
+    async def test_quiet_suffix_flushes_without_waiting_for_next_delta(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            callback = self.callback(relay)
+            ws = FakeWebSocket(relay=relay)
+            suffix_ready = asyncio.Event()
+            finish = asyncio.Event()
+
+            async def turn(*_args):
+                yield ("queued", None)
+                yield ("delta", "之后把实测发现与")
+                await asyncio.sleep(0.005)
+                yield ("delta", "设计建议分开汇报。")
+                suffix_ready.set()
+                await finish.wait()
+                yield ("done", "completed")
+
+            app = relay_module.AppServer("unused")
+            with (
+                patch.object(relay, "_app_for_thread", return_value=app),
+                patch.object(app, "connect"),
+                patch.object(app, "run_turn", side_effect=turn),
+                patch.object(relay_module, "STREAM_FLUSH_INTERVAL", 0.04),
+            ):
+                running = asyncio.create_task(relay._handle_callback(ws, callback))
+                try:
+                    await asyncio.wait_for(suffix_ready.wait(), 1)
+                    async with asyncio.timeout(1):
+                        while (
+                            "设计建议分开汇报。" not in ws.messages[-1]["body"]["stream"]["content"]
+                        ):
+                            await asyncio.sleep(0.005)
+                    self.assertFalse(running.done())
+                    self.assertFalse(ws.messages[-1]["body"]["stream"]["finish"])
+                    sent = len(ws.messages)
+                    await asyncio.sleep(0.12)
+                    self.assertEqual(len(ws.messages), sent, "unchanged text was resent")
+                finally:
+                    finish.set()
+                    await running
+
+    async def test_message_boundary_flushes_immediately(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            callback = self.callback(relay)
+            ws = FakeWebSocket(relay=relay)
+            finish = asyncio.Event()
+            boundary = asyncio.Event()
+
+            async def turn(*_args):
+                yield ("queued", None)
+                yield ("delta", "完整")
+                yield ("delta", "句子。")
+                yield ("boundary", None)
+                boundary.set()
+                await finish.wait()
+                yield ("done", "completed")
+
+            app = relay_module.AppServer("unused")
+            with (
+                patch.object(relay, "_app_for_thread", return_value=app),
+                patch.object(app, "connect"),
+                patch.object(app, "run_turn", side_effect=turn),
+                patch.object(relay_module, "STREAM_FLUSH_INTERVAL", 60),
+            ):
+                running = asyncio.create_task(relay._handle_callback(ws, callback))
+                try:
+                    await asyncio.wait_for(boundary.wait(), 1)
+                    self.assertIn("完整句子。", ws.messages[-1]["body"]["stream"]["content"])
+                finally:
+                    finish.set()
+                    await running
+
+    async def test_concurrent_turns_keep_independent_streams(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            ws = FakeWebSocket(relay=relay)
+            both_started = asyncio.Event()
+            started = set()
+
+            async def make_app(thread, _home):
+                app = relay_module.AppServer("unused")
+                app.connect = AsyncMock()
+
+                async def turn(*_args):
+                    yield ("queued", None)
+                    started.add(thread)
+                    if len(started) == 2:
+                        both_started.set()
+                    await both_started.wait()
+                    yield ("delta", thread + " 的过")
+                    yield ("delta", "程。\n\n")
+                    yield ("boundary", None)
+                    await asyncio.sleep(0)
+                    yield ("delta", "\n")
+                    yield ("delta", "\n" + thread + " 的结果。")
+                    yield ("done", "completed")
+
+                app.run_turn = Mock(side_effect=turn)
+                return app
+
+            with patch.object(relay, "_app_for_thread", side_effect=make_app):
+                await asyncio.wait_for(
+                    asyncio.gather(
+                        relay._handle_callback(ws, self.callback(relay, "req-A", "A", 0)),
+                        relay._handle_callback(ws, self.callback(relay, "req-B", "B", 1)),
+                    ),
+                    timeout=1,
+                )
+            stream_ids = {}
+            for message in ws.messages:
+                request_id = message["headers"]["req_id"]
+                stream = message["body"]["stream"]
+                own, other = ("A", "B") if request_id == "req-A" else ("B", "A")
+                stream_ids.setdefault(own, set()).add(stream["id"])
+                self.assertNotIn(other + " 的", stream["content"])
+                if stream["finish"]:
+                    self.assertIn(own + " 的过程。\n\n" + own + " 的结果。", stream["content"])
+                    self.assertNotIn("\n\n\n", stream["content"])
+            self.assertEqual(len(stream_ids["A"]), 1)
+            self.assertEqual(len(stream_ids["B"]), 1)
+            self.assertTrue(stream_ids["A"].isdisjoint(stream_ids["B"]))
+
     def make_relay(self, directory):
         return relay_module.Relay(
             {"bot_id": "bot", "secret": "secret"},
@@ -246,6 +650,197 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
     async def collect_turn(self, app):
         return [item async for item in app.run_turn("thread", "reply")]
 
+    async def test_mock_turn_stream_and_completion_push_are_complementary(self):
+        async def serve(websocket):
+            async for raw in websocket:
+                request = json.loads(raw)
+                if "id" not in request:
+                    continue
+                result = {}
+                if request["method"] == "thread/queue/add":
+                    result = {"queuedSubmission": {"id": "queued-id"}}
+                await websocket.send(json.dumps({"id": request["id"], "result": result}))
+                if request["method"] == "thread/queue/add":
+                    client_id = request["params"]["clientUserMessageId"]
+                    for method, params in [
+                        ("item/started", {"item": {"type": "userMessage", "clientId": client_id}}),
+                        ("item/agentMessage/delta", {"delta": "检查配置。"}),
+                        ("item/completed", {"item": {"type": "agentMessage"}}),
+                        ("item/commandExecution/outputDelta", {"delta": "TOOL STDOUT"}),
+                        ("item/agentMessage/delta", {"delta": "修复完成。"}),
+                        ("turn/completed", {"turn": {"id": "reply-turn", "status": "completed"}}),
+                    ]:
+                        await websocket.send(
+                            json.dumps(
+                                {"method": method, "params": {"turnId": "reply-turn", **params}}
+                            )
+                        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "app.sock")
+            server = await unix_serve(serve, path)
+            async with server:
+                relay = self.make_relay(directory)
+                websocket = FakeWebSocket(relay=relay)
+                with patch.object(
+                    relay, "_app_for_thread", return_value=relay_module.AppServer(path)
+                ):
+                    running = asyncio.create_task(
+                        relay._run_turn(
+                            websocket,
+                            {"headers": {"req_id": "reply"}, "body": {"from": {"userid": "user"}}},
+                            "thread",
+                            "继续",
+                            relay.codex_homes[0],
+                        )
+                    )
+                    async with asyncio.timeout(3):
+                        while not relay._completion_waiters:
+                            await asyncio.sleep(0)
+                self.assertFalse(running.done())
+
+                Path(relay.outbox).write_text(
+                    json.dumps(
+                        {
+                            "thread": "thread",
+                            "turn": "reply-turn",
+                            "codex_home": str(relay.codex_homes[0]),
+                            "chatid": "user",
+                            "content": "修复完成。",
+                        }
+                    )
+                    + "\n"
+                )
+                delivery = asyncio.create_task(relay._process_outbox(websocket))
+                async with asyncio.timeout(2):
+                    while websocket.messages[-1]["cmd"] != "aibot_send_msg":
+                        await asyncio.sleep(0)
+                notification = websocket.messages[-1]
+                self.assertFalse(running.done(), "stream trimmed before completion ACK")
+                relay._resolve_command({"headers": notification["headers"], "errcode": 0})
+                await asyncio.wait_for(delivery, timeout=2)
+                await asyncio.wait_for(running, timeout=2)
+                streams = [
+                    message["body"]["stream"]
+                    for message in websocket.messages
+                    if message["body"].get("msgtype") == "stream"
+                ]
+                self.assertFalse(streams[0]["finish"])
+                self.assertTrue(streams[-1]["finish"])
+                self.assertIn("检查配置。", streams[-1]["content"])
+                self.assertNotIn("修复完成。", streams[-1]["content"])
+                self.assertNotIn("TOOL STDOUT", streams[-1]["content"])
+                content = notification["body"]["markdown"]["content"]
+                self.assertIn("修复完成。", content)
+                self.assertNotIn("检查配置。", content)
+                self.assertIn("回复本条消息继续", content)
+                self.assertFalse(any(lock.locked() for lock in relay._submission_locks.values()))
+
+    async def test_long_completion_resumes_after_last_ack_and_receipt_survives_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            home = str(relay.codex_homes[0])
+            text = '甲😀"\\正文' * 100
+            Path(relay.outbox).write_text(
+                json.dumps(
+                    {
+                        "thread": "thread",
+                        "turn": "turn",
+                        "codex_home": home,
+                        "chatid": "user",
+                        "content": text,
+                    }
+                )
+                + "\n"
+            )
+            delivered = []
+            attempts = 0
+
+            async def reject_second(_ws, _cmd, body, **_kwargs):
+                nonlocal attempts
+                attempts += 1
+                if attempts == 2:
+                    return {"errcode": 1}
+                delivered.append(body["markdown"]["content"])
+                return {"errcode": 0}
+
+            with (
+                patch.object(relay_module, "MAX_CONTENT_BYTES", 256),
+                patch.object(relay, "_send", side_effect=reject_second),
+            ):
+                with self.assertRaises(RuntimeError):
+                    await relay._process_outbox(FakeWebSocket(relay=relay))
+            key = relay._completion_key(home, "thread", "turn", "user")
+            self.assertNotIn(key, relay._delivered)
+            restarted = self.make_relay(directory)
+
+            async def accept(_ws, _cmd, body, **_kwargs):
+                delivered.append(body["markdown"]["content"])
+                return {"errcode": 0}
+
+            with (
+                patch.object(relay_module, "MAX_CONTENT_BYTES", 256),
+                patch.object(restarted, "_send", side_effect=accept),
+            ):
+                await restarted._process_outbox(FakeWebSocket())
+            bodies = []
+            for content in delivered:
+                self.assertLessEqual(len(content.encode("utf-8")), 256)
+                body = content.removeprefix("**Codex 完成**\n\n").split("\n\n回复本条消息继续：")[0]
+                bodies.append(body)
+            self.assertEqual("".join(bodies), text)
+            self.assertGreater(len(bodies), 2)
+            self.assertFalse(Path(relay.outbox + ".processing").exists())
+            after_restart = self.make_relay(directory)
+            self.assertTrue(
+                await after_restart._completion_confirmed(home, "thread", "turn", "user")
+            )
+            with patch.object(relay_module, "COMPLETION_WAIT_TIMEOUT", 0.005):
+                for values in [
+                    (str(relay.codex_homes[1]), "thread", "turn", "user"),
+                    (home, "other-thread", "turn", "user"),
+                    (home, "thread", "other-turn", "user"),
+                    (home, "thread", "turn", "other-user"),
+                ]:
+                    self.assertFalse(await after_restart._completion_confirmed(*values))
+
+    async def test_missing_completion_notification_retains_final_answer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            callback = self.callback(relay)
+            app = relay_module.AppServer("unused")
+            app.turn_id = "turn-without-notification"
+            ws = FakeWebSocket(relay=relay)
+            with (
+                patch.object(relay, "_app_for_thread", return_value=app),
+                patch.object(app, "connect"),
+                patch.object(
+                    app,
+                    "run_turn",
+                    return_value=async_items(
+                        [("queued", None), ("delta", "最终答案不能丢"), ("done", "completed")]
+                    ),
+                ),
+                patch.object(relay_module, "COMPLETION_WAIT_TIMEOUT", 0.01),
+            ):
+                await relay._handle_callback(ws, callback)
+            self.assertTrue(ws.messages[-1]["body"]["stream"]["finish"])
+            self.assertIn("最终答案不能丢", ws.messages[-1]["body"]["stream"]["content"])
+
+    async def test_stream_rejected_ack_is_not_silently_accepted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            ws = FakeWebSocket()
+
+            async def send(_ws, _cmd, _body, **_kwargs):
+                return {"errcode": 1}
+
+            with patch.object(relay, "_send", side_effect=send):
+                with self.assertRaises(RuntimeError):
+                    await relay._stream(
+                        ws, {"headers": {"req_id": "request"}}, "stream", "内容", False
+                    )
+
     async def test_cancelling_stream_closes_app_server_and_releases_submission(self):
         started = asyncio.Event()
 
@@ -264,16 +859,20 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
                 patch.object(app, "run_turn", side_effect=turn),
             ):
                 running = asyncio.create_task(
-                    relay._run_turn(FakeWebSocket(), {}, "thread", "reply")
+                    relay._run_turn(
+                        FakeWebSocket(relay=relay), {}, "thread", "reply", relay.codex_homes[0]
+                    )
                 )
                 try:
                     await asyncio.wait_for(started.wait(), timeout=1)
-                    self.assertFalse(relay._submission_lock.locked())
+                    self.assertFalse(
+                        any(lock.locked() for lock in relay._submission_locks.values())
+                    )
                 finally:
                     running.cancel()
                     await asyncio.gather(running, return_exceptions=True)
                 close.assert_awaited_once_with()
-                self.assertFalse(relay._submission_lock.locked())
+                self.assertFalse(any(lock.locked() for lock in relay._submission_locks.values()))
 
     async def test_callbacks_are_handled_while_earlier_reply_is_running(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -324,7 +923,7 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
                 json.dumps({"thread": "thread", "chatid": "user", "content": "done"}) + "\n",
                 encoding="utf-8",
             )
-            websocket = FakeWebSocket()
+            websocket = FakeWebSocket(relay=relay)
 
             delivery = asyncio.create_task(relay._process_outbox(websocket))
             while not websocket.messages:
@@ -343,7 +942,7 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
                 json.dumps({"thread": "thread", "chatid": "user", "content": "done"}) + "\n",
                 encoding="utf-8",
             )
-            websocket = FakeWebSocket()
+            websocket = FakeWebSocket(relay=relay)
 
             delivery = asyncio.create_task(relay._process_outbox(websocket))
             while not websocket.messages:
@@ -368,7 +967,7 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
                 json.dumps({"thread": "thread", "chatid": "user", "content": "done"}) + "\n",
                 encoding="utf-8",
             )
-            websocket = FakeWebSocket()
+            websocket = FakeWebSocket(relay=relay)
             delivery = asyncio.create_task(relay._process_outbox(websocket))
             while not websocket.messages:
                 await asyncio.sleep(0)
@@ -465,7 +1064,7 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
                 }
             }
             with patch.object(restarted, "_run_turn") as run:
-                ws = FakeWebSocket()
+                ws = FakeWebSocket(relay=relay)
                 await restarted._handle_callback(ws, callback)
                 run.assert_awaited_once_with(ws, callback, "thread", "reply", home)
 
@@ -480,7 +1079,7 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
                 + "\n"
             )
             with patch.object(relay, "_send", return_value={"errcode": 0}):
-                await relay._process_outbox(FakeWebSocket())
+                await relay._process_outbox(FakeWebSocket(relay=relay))
             token = relay._last_push["user"]["token"]
             self.assertEqual(relay._tokens[token]["codex_home"], home)
 

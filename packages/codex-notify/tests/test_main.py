@@ -72,6 +72,18 @@ class NotifyTests(unittest.TestCase):
         content = "  first  \n\n\nsecond  \n"
         self.assertEqual(notify.wecom_markdown(content), "first\n\nsecond")
 
+    def test_wecom_outbox_preserves_turn_identity_and_complete_text(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "outbox.jsonl"
+            content = "第一段。\n\n" + "甲😀" * 10000
+            with mock.patch.object(notify, "reply_outbox", str(path)):
+                notify.queue_wecom_push("thread", content, "user", "/home/test/.codex-tca", "turn")
+            entry = json.loads(path.read_text())
+            self.assertEqual(entry["thread"], "thread")
+            self.assertEqual(entry["turn"], "turn")
+            self.assertEqual(entry["codex_home"], "/home/test/.codex-tca")
+            self.assertEqual(entry["content"], content)
+
     def test_state_round_trip_is_keyed_by_thread(self):
         with tempfile.TemporaryDirectory() as directory:
             previous = notify.state_dir
@@ -164,7 +176,9 @@ class NotifyTests(unittest.TestCase):
 
     def test_wecom_queue_requires_relay_on_host(self):
         with (
-            mock.patch.object(notify, "stdin_json", return_value={"session_id": "thread"}),
+            mock.patch.object(
+                notify, "stdin_json", return_value={"session_id": "thread", "turn_id": "turn"}
+            ),
             mock.patch.object(notify, "load_state", return_value={}),
             mock.patch.object(notify, "load_routes", return_value={"me": {"wecom": "user"}}),
             mock.patch.object(notify, "queue_wecom_push") as queue,
@@ -176,6 +190,7 @@ class NotifyTests(unittest.TestCase):
 
             notify.cmd_notify(["notify", "Codex", "--wecom-relay"])
             queue.assert_called_once()
+            self.assertEqual(queue.call_args.args[-1], "turn")
 
     @mock.patch.object(notify, "send_serverchan")
     @mock.patch.object(notify.os, "fork", return_value=123)

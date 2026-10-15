@@ -252,7 +252,7 @@ def notify_local(title, content):
         log(f"notify local failed: {type(error).__name__}")
 
 
-def queue_wecom_push(thread_id, content, chatid, codex_home):
+def queue_wecom_push(thread_id, content, chatid, codex_home, turn_id=None):
     """Ask the dt-w01 WeCom long-connection to push a replyable notification.
 
     The chatid is resolved here from the thread's route; the transport on the
@@ -263,6 +263,7 @@ def queue_wecom_push(thread_id, content, chatid, codex_home):
         entry = json.dumps(
             {
                 "thread": thread_id,
+                "turn": turn_id,
                 "codex_home": codex_home,
                 "content": wecom_markdown(content),
                 "chatid": chatid,
@@ -522,7 +523,7 @@ def cmd_notify(args):
         log("notify serverchan skip: url profile missing")
 
     if chatid and wecom_enabled:
-        queue_wecom_push(thread_id, content, chatid, codex_home)
+        queue_wecom_push(thread_id, content, chatid, codex_home, turn_id)
     elif chatid:
         log("notify wecom skip: no relay configured on this host")
     else:

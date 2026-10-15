@@ -7,9 +7,77 @@ each one as a separate turn when the thread becomes idle. The relay matches
 the resulting user message by `clientUserMessageId` before streaming that
 turn's agent output to WeCom.
 
-Both WebSocket connections use asyncio. Replies are submitted in callback
-order; once a reply is queued, its response can stream alongside later replies.
-Cancelling a callback closes its app-server connection.
+The stream contains assistant text from the turn's intermediate and final
+messages; the Stop-hook notification contains only `last_assistant_message`.
+Once that notification is fully acknowledged, the still-editable stream drops
+the final assistant message to avoid repeating the answer. Both carry a stable reply token identifying the
+owning home and thread, including the stream's initial queued acknowledgement.
+An unrecognized quote is rejected; only an unquoted message can fall back to
+the sender's latest completion notification. The stream does not
+include command stdout or reasoning events.
+
+Both WebSocket connections use asyncio. Submission locks preserve callback
+order within each home/thread; other homes and threads proceed independently.
+Each app-server RPC has a 30-second deadline (daemon startup has a separate
+60-second deadline). Once a reply is queued, its response can stream alongside
+later replies. Cancelling a callback closes its app-server connection.
+
+Every two seconds, the relay checks the accumulated text and sends a stream
+snapshot only if it has changed. This check continues even when no further
+delta arrives. Completing an assistant message flushes immediately.
+Each incoming WeCom request has its own buffer and stream IDs, and app-server
+events are filtered to the submitted turn. Concurrent requests do not share
+stream content. Within a single turn, assistant messages are separated by a
+blank line (`\n\n`), without adding separators between deltas of the same message.
+Existing newlines at message boundaries are normalized to one blank line.
+
+## Length limits and completion deduplication
+
+Every stream snapshot and completion notification fits the [20,480 UTF-8 byte
+limit](https://github.com/WecomTeam/aibot-node-sdk/blob/main/src/types/api.ts),
+counting all visible text, separators, headings and reply-token footers. JSON
+escaping is not counted as content. There is no soft threshold or rolling-tail
+truncation. On overflow, the relay seals the largest prefix ending at a complete
+assistant-message boundary that fits, and continues in a new stream ID under
+the original callback `req_id`. It can shrink the old snapshot before sealing
+it so the next assistant message moves intact into the new bubble.
+
+If one assistant message alone exceeds the budget, its text is hard-split at
+Unicode code-point boundaries. No files are uploaded; newline or Markdown
+syntax boundaries are not required, so a code block or table may span bubbles.
+Completion notifications use the same byte accounting and hard splitting.
+Every part carries a reply token; already acknowledged notification parts are
+checkpointed so retries resume at the remaining text. All stream updates also
+wait for an acknowledgement before another update for that callback is sent.
+
+The Stop hook includes `turn_id` in its outbox entry. Delivery receipts in
+`delivered.json` are keyed by home, thread, turn and recipient, and recorded only
+after **every** notification part is acknowledged. At turn completion the stream
+waits up to 30 seconds for this receipt before removing its last assistant
+message. Missing, rejected or legacy notifications without a turn ID leave the
+stream answer intact. If nothing remains after removal, the bubble finishes
+with a short replyable completion hint. Already finished bubbles cannot be
+revised: if the final assistant message was itself hard-split, its previously
+sealed fragments remain visible and only its editable suffix can be removed.
+
+## Submission recovery
+
+`submissions.json` in the relay state directory persists WeCom `msgid` submission
+states using atomic replacement and fsync, without storing the message text:
+
+| State | Retry policy |
+| --- | --- |
+| `preparing` | No queue request has been sent. After restart, becomes `failed`. |
+| `submitting` | Persisted before sending `thread/queue/add`. After interruption or restart, becomes `unknown`. |
+| `failed` | Setup failed or the server explicitly rejected the queue request. The same `msgid` can retry. |
+| `accepted` | Queue confirmation and submission ID received. Repeated callbacks never enqueue it again. |
+| `unknown` | The queue request may have reached Codex, but confirmation was lost. Repeated callbacks never enqueue it again. Check the Codex thread manually before deciding whether to send a new message. |
+
+After acceptance, a lost progress connection is reported as “已入队，进度连接断开”,
+not a failed injection. The Stop hook still supplies the independent completion
+notification. Accepted/unknown records are retained across relay restarts and
+are not automatically expired. A corrupt ledger stops relay startup instead of
+silently forgetting duplicate protection. Keep this file when moving relay state.
 
 ## Independent Codex homes
 

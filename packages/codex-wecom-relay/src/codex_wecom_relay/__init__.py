@@ -46,13 +46,17 @@ from pathlib import Path
 
 from websockets.asyncio.client import connect, unix_connect
 
+from .streaming import StreamReply, split_utf8
+
 WSS_URL = "wss://openws.work.weixin.qq.com"
 PING_INTERVAL = 30
 TOKEN_RE = re.compile(r"r#([0-9a-f]{8})")
-STREAM_FLUSH_INTERVAL = 0.8
-MAX_STREAM_CHARS = 20000
+STREAM_FLUSH_INTERVAL = 2
+MAX_CONTENT_BYTES = 20480
+COMPLETION_WAIT_TIMEOUT = 30
 TOKEN_TTL_SECONDS = 7 * 86400
 COMMAND_ACK_TIMEOUT = 15
+RPC_TIMEOUT = 30
 
 
 def load_json(path, default):
@@ -69,12 +73,24 @@ def save_json(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(value), encoding="utf-8")
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(value, handle)
+        handle.flush()
+        os.fsync(handle.fileno())
     temporary.replace(path)
+    directory = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
 
 
 class AppServerError(Exception):
     pass
+
+
+class AppServerRejected(AppServerError):
+    """The server explicitly rejected an RPC, so it is safe to retry."""
 
 
 class AppServer:
@@ -85,6 +101,8 @@ class AppServer:
         self._socket = None
         self._next_id = 0
         self._pending_notifications = deque()
+        self.on_submission = lambda state, submission_id=None: None
+        self.turn_id = None
 
     async def connect(self):
         self._socket = await unix_connect(
@@ -119,6 +137,10 @@ class AppServer:
         return self._next_id
 
     async def request(self, method, params=None):
+        async with asyncio.timeout(RPC_TIMEOUT):
+            return await self._request(method, params)
+
+    async def _request(self, method, params):
         request_id = self._next_request_id()
         await self._send_json({"method": method, "id": request_id, "params": params or {}})
         while True:
@@ -128,7 +150,7 @@ class AppServer:
                     self._pending_notifications.append(message)
                 continue
             if "error" in message:
-                raise AppServerError(f"{method} failed: {message['error']}")
+                raise AppServerRejected(f"{method} failed: {message['error']}")
             return message.get("result")
 
     async def notifications(self):
@@ -182,9 +204,17 @@ class AppServer:
         # connection receives none of the turn's notifications.
         await self.resume_thread(thread_id)
         client_message_id = secrets.token_hex(16)
-        queued = await self.queue_turn(thread_id, text, client_message_id) or {}
-        if not (queued.get("queuedSubmission") or {}).get("id"):
+        # Persist uncertainty before the first byte can leave this process.
+        self.on_submission("submitting")
+        try:
+            queued = await self.queue_turn(thread_id, text, client_message_id) or {}
+        except AppServerRejected:
+            self.on_submission("failed")
+            raise
+        submission_id = (queued.get("queuedSubmission") or {}).get("id")
+        if not submission_id:
             raise AppServerError("thread/queue/add returned no queued submission ID")
+        self.on_submission("accepted", submission_id)
         yield ("queued", None)
         turn_id = None
         async for notification in self.notifications():
@@ -196,12 +226,18 @@ class AppServer:
                 and (params.get("item") or {}).get("clientId") == client_message_id
             ):
                 turn_id = params.get("turnId")
+                self.turn_id = turn_id
                 continue
             notification_turn_id = params.get("turnId") or (params.get("turn") or {}).get("id")
             if turn_id is None or notification_turn_id != turn_id:
                 continue
             if method == "item/agentMessage/delta":
                 yield ("delta", params.get("delta", ""))
+            elif (
+                method == "item/completed"
+                and (params.get("item") or {}).get("type") == "agentMessage"
+            ):
+                yield ("boundary", (params.get("item") or {}).get("text"))
             elif method == "turn/completed":
                 status = params.get("status") or params.get("turn", {}).get("status")
                 yield ("done", status)
@@ -230,19 +266,46 @@ class Relay:
         self.outbox = os.path.join(state_dir, "outbox.jsonl")
         self.tokens_path = os.path.join(state_dir, "tokens.json")
         self.last_push_path = os.path.join(state_dir, "last-push.json")
+        self.submissions_path = os.path.join(state_dir, "submissions.json")
+        self.delivered_path = os.path.join(state_dir, "delivered.json")
         self.log = log
         self.codex_homes = tuple(
             dict.fromkeys(Path(home).expanduser().resolve() for home in codex_homes)
         )
         self.codex_bin = codex_bin
         self._seq = 0
-        self._seen = deque(maxlen=1000)
         self._tokens = {}
         self._last_push = {}
         self._pending_commands = {}
-        # Preserve WeCom callback order while each app-server connection
-        # finds the owning home and performs queue/add. Streaming may then overlap.
-        self._submission_lock = asyncio.Lock()
+        self._submission_locks = {}
+        self._active_submissions = set()
+        self._completion_waiters = {}
+        cutoff = time.time() - TOKEN_TTL_SECONDS
+        self._delivered = {
+            key: at
+            for key, at in load_json(self.delivered_path, {}).items()
+            if isinstance(at, (int, float)) and at > cutoff
+        }
+        # A damaged ledger must fail closed rather than forget accepted requests.
+        try:
+            with open(self.submissions_path, encoding="utf-8") as handle:
+                self._submissions = json.load(handle)
+        except FileNotFoundError:
+            self._submissions = {}
+        if not isinstance(self._submissions, dict) or any(
+            not isinstance(entry, dict)
+            or entry.get("state")
+            not in {"preparing", "submitting", "failed", "unknown", "accepted"}
+            for entry in self._submissions.values()
+        ):
+            raise ValueError("invalid submission ledger; refusing to risk duplicate submissions")
+        for entry in self._submissions.values():
+            if entry["state"] == "submitting":
+                entry["state"] = "unknown"
+            elif entry["state"] == "preparing":
+                entry["state"] = "failed"
+        if self._submissions:
+            save_json(self.submissions_path, self._submissions)
         self._load_tokens()
         self._load_last_push()
 
@@ -316,14 +379,44 @@ class Relay:
         await self._respond(ws, callback, {"msgtype": "markdown", "markdown": {"content": content}})
 
     async def _stream(self, ws, callback, stream_id, content, finish):
-        await self._respond(
+        if len(content.encode("utf-8")) > MAX_CONTENT_BYTES:
+            raise ValueError("stream content exceeds the UTF-8 byte limit")
+        await self._checked_send(
             ws,
-            callback,
+            "aibot_respond_msg",
             {
                 "msgtype": "stream",
                 "stream": {"id": stream_id, "finish": finish, "content": content},
             },
+            req_id=callback.get("headers", {}).get("req_id") or self._req_id(),
         )
+
+    async def _checked_send(self, ws, cmd, body, **kwargs):
+        response = await self._send(ws, cmd, body, wait_for_ack=True, **kwargs)
+        if response.get("errcode") != 0:
+            raise RuntimeError(f"{cmd} rejected: errcode={response.get('errcode')}")
+        return response.get("body") or {}
+
+    @staticmethod
+    def _completion_key(home, thread, turn, target):
+        if not home or not turn or not target:
+            return None
+        return json.dumps([str(home), thread, turn, target])
+
+    async def _completion_confirmed(self, home, thread, turn, target):
+        key = self._completion_key(home, thread, turn, target)
+        if key is None:
+            return False
+        if key in self._delivered:
+            return True
+        event = self._completion_waiters.setdefault(key, asyncio.Event())
+        try:
+            await asyncio.wait_for(event.wait(), COMPLETION_WAIT_TIMEOUT)
+            return True
+        except TimeoutError:
+            return False
+        finally:
+            self._completion_waiters.pop(key, None)
 
     def _new_token(self, thread_id, codex_home=None):
         while True:
@@ -385,31 +478,37 @@ class Relay:
                 entry["token"] = token
                 lines[0] = json.dumps(entry) + "\n"
                 self._checkpoint_outbox(tmp, lines)
-            content = "\n\n".join(
-                section
-                for section in [
-                    "**Codex 完成**",
-                    body,
-                    f"回复本条消息继续：`r#{token}`",
-                ]
-                if section
-            )
-            response = await self._send(
-                ws,
-                "aibot_send_msg",
-                {
-                    "chatid": target,
-                    "chat_type": 1,
-                    "msgtype": "markdown",
-                    "markdown": {"content": content},
-                },
-                wait_for_ack=True,
-            )
-            if response.get("errcode") != 0:
-                raise RuntimeError(
-                    f"aibot_send_msg rejected: errcode={response.get('errcode')} "
-                    f"errmsg={response.get('errmsg')}"
+            header = "**Codex 完成**\n\n"
+            footer = f"\n\n回复本条消息继续：`r#{token}`"
+            budget = MAX_CONTENT_BYTES - len((header + footer).encode("utf-8"))
+            # Checkpoint each acknowledged part. Retry resumes at the remaining
+            # body, rather than resending parts already confirmed by WeCom.
+            remaining = entry.get("remaining", body)
+            while True:
+                part, rest = split_utf8(remaining, budget)
+                content = header + part + footer
+                await self._checked_send(
+                    ws,
+                    "aibot_send_msg",
+                    {
+                        "chatid": target,
+                        "chat_type": 1,
+                        "msgtype": "markdown",
+                        "markdown": {"content": content},
+                    },
                 )
+                if not rest:
+                    break
+                remaining = rest
+                entry["remaining"] = remaining
+                lines[0] = json.dumps(entry) + "\n"
+                self._checkpoint_outbox(tmp, lines)
+            key = self._completion_key(codex_home, thread_id, entry.get("turn"), target)
+            if key:
+                self._delivered[key] = time.time()
+                save_json(self.delivered_path, self._delivered)
+                if event := self._completion_waiters.get(key):
+                    event.set()
             self.log.info("pushed thread=%s token=r#%s", thread_id, token)
             self._last_push[target] = {
                 "token": token,
@@ -529,59 +628,127 @@ class Relay:
 
     async def _run_turn(self, ws, callback, thread_id, text, codex_home=None):
         stream_id = self._stream_id(callback)
-        await self._submission_lock.acquire()
-        submission_locked = True
+        msgid = callback.get("body", {}).get("msgid")
+        state = "preparing"
+
+        def record(new_state, submission_id=None):
+            nonlocal state
+            state = new_state
+            if msgid:
+                entry = {"state": state, "thread": thread_id, "updated": time.time()}
+                if codex_home:
+                    entry["codex_home"] = str(codex_home)
+                if submission_id:
+                    entry["submission_id"] = submission_id
+                elif msgid in self._submissions:
+                    entry["submission_id"] = self._submissions[msgid].get("submission_id")
+                self._submissions[msgid] = entry
+                save_json(self.submissions_path, self._submissions)
+
+        record("preparing")
+        submission_lock = None
+        submission_locked = False
         app = None
-        parts = []
-        last_flush = 0.0
+        pending = None
+        events = None
         status = None
         try:
+            codex_home = (
+                self._configured_home(codex_home)
+                if codex_home
+                else await asyncio.to_thread(self._home_for_thread, thread_id)
+            )
+            token, _ = self._extract_reply(callback.get("body", {}))
+            if not token or self._tokens.get(token, {}).get("thread") != thread_id:
+                token = self._new_token(thread_id, str(codex_home))
+
+            async def send_stream(stream_id, content, finish):
+                await self._stream(ws, callback, stream_id, content, finish)
+
+            reply = StreamReply(send_stream, stream_id, token, MAX_CONTENT_BYTES)
+
+            # Only serialize the submission phase for this particular home/thread.
+            submission_lock = self._submission_locks.setdefault(
+                (str(codex_home), thread_id), asyncio.Lock()
+            )
+            await submission_lock.acquire()
+            submission_locked = True
             app = await self._app_for_thread(thread_id, codex_home)
+            app.on_submission = record
             await app.connect()
-            async for kind, value in app.run_turn(thread_id, text):
+            events = app.run_turn(thread_id, text)
+            next_check = time.monotonic() + STREAM_FLUSH_INTERVAL
+            while True:
+                if pending is None:
+                    pending = asyncio.create_task(anext(events))
+                timeout = max(0, next_check - time.monotonic())
+                ready, _ = await asyncio.wait({pending}, timeout=timeout)
+                if time.monotonic() >= next_check:
+                    await reply.flush()
+                    next_check = time.monotonic() + STREAM_FLUSH_INTERVAL
+                if not ready:
+                    continue
+                try:
+                    kind, value = pending.result()
+                except StopAsyncIteration:
+                    break
+                finally:
+                    pending = None
                 if kind == "delta":
-                    parts.append(value)
-                    now = time.monotonic()
-                    if now - last_flush >= STREAM_FLUSH_INTERVAL:
-                        last_flush = now
-                        await self._stream(
-                            ws, callback, stream_id, "".join(parts)[-MAX_STREAM_CHARS:], False
-                        )
+                    reply.append(value)
+                elif kind == "boundary":
+                    reply.complete(value)
+                    await reply.flush()
                 elif kind == "queued":
-                    await self._stream(ws, callback, stream_id, "已排队，等待当前任务完成。", False)
-                    self._submission_lock.release()
+                    if state != "accepted":
+                        record("accepted")
+                    submission_lock.release()
                     submission_locked = False
+                    await reply.emit("已排队，等待当前任务完成。")
                 elif kind == "done":
                     status = value
-            final = "".join(parts).strip()
-            if not final:
-                final = f"(本轮完成，status={status})"
-            await self._stream(ws, callback, stream_id, final[-MAX_STREAM_CHARS:], True)
-        except (AppServerError, ConnectionError, OSError) as exc:
-            self.log.warning("turn failed thread=%s: %s", thread_id, exc)
-            await self._respond_markdown(ws, callback, f"Codex 注入失败：{exc}")
+                    reply.complete()
+            body = callback.get("body", {})
+            target = body.get("chatid") or (body.get("from") or {}).get("userid")
+            confirmed = status == "completed" and await self._completion_confirmed(
+                codex_home, thread_id, app.turn_id, target
+            )
+            await reply.finish(drop_last=confirmed, status=status)
         except Exception:
-            self.log.exception("turn failed thread=%s", thread_id)
-            await self._respond_markdown(ws, callback, "Codex 注入失败：内部错误")
+            self.log.exception("turn interrupted thread=%s state=%s", thread_id, state)
+            if state == "accepted":
+                message = "已入队，进度连接断开。请勿重复提交；完成通知仍由 Stop hook 发送。"
+            elif state == "submitting":
+                record("unknown")
+                message = "提交结果未知，请先检查 Codex 会话，避免重复提交。"
+            else:
+                record("failed")
+                message = "Codex 未入队，提交失败，可以重试。"
+            await self._respond_markdown(ws, callback, message)
         finally:
-            if submission_locked:
-                self._submission_lock.release()
+            # Cancellation can happen on WeCom reconnect, including during queue/add.
+            if state == "submitting":
+                record("unknown")
+            elif state == "preparing":
+                record("failed")
+            if pending is not None:
+                pending.cancel()
+                await asyncio.gather(pending, return_exceptions=True)
+            if events is not None:
+                await events.aclose()
+            if submission_locked and submission_lock is not None:
+                submission_lock.release()
             if app is not None:
                 await app.close()
 
     async def _handle_callback(self, ws, callback):
         body = callback.get("body", {})
-        self.log.debug("callback: %s", json.dumps(callback, ensure_ascii=False))
         msgid = body.get("msgid")
-        if msgid:
-            if msgid in self._seen:
-                return
-            self._seen.append(msgid)
         if body.get("msgtype") != "text":
             self.log.info("ignoring non-text message msgtype=%s", body.get("msgtype"))
             return
         token, text = self._extract_reply(body)
-        if not token:
+        if not token and "quote" not in body:
             # No quote and no token in the text: continue the most recent
             # conversation the relay pushed to this sender.
             userid = (body.get("from") or {}).get("userid", "")
@@ -593,7 +760,25 @@ class Relay:
             entry = self._tokens[token]
             thread_id = entry["thread"]
             self.log.info("reply token=r#%s thread=%s", token, thread_id)
-            await self._run_turn(ws, callback, thread_id, text, entry.get("codex_home"))
+            previous = self._submissions.get(msgid, {}).get("state")
+            if msgid in self._active_submissions or previous in (
+                "accepted",
+                "unknown",
+                "submitting",
+            ):
+                message = (
+                    "该消息已入队，不会重复提交。"
+                    if previous == "accepted"
+                    else "该消息正在提交或结果未知，请先检查 Codex 会话，避免重复提交。"
+                )
+                await self._respond_markdown(ws, callback, message)
+                return
+            if msgid:
+                self._active_submissions.add(msgid)
+            try:
+                await self._run_turn(ws, callback, thread_id, text, entry.get("codex_home"))
+            finally:
+                self._active_submissions.discard(msgid)
         else:
             await self._respond_markdown(
                 ws,
