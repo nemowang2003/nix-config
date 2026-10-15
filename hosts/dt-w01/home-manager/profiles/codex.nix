@@ -49,13 +49,14 @@ in {
     ''
       ## dt-w01 host notes (NixOS WSL)
 
-      本机是 NixOS WSL。需要调用 Windows 命令时使用 powershell.exe，不要用
-      cmd.exe；并且不要给 powershell.exe 加 -NoProfile：用户 profile 会把输出
-      编码设为 UTF-8，中文等非 ASCII 文本才能正确传递（输出被重定向时 profile
-      里的交互式装饰会自动跳过）。
+      This host runs NixOS on WSL. Use powershell.exe to run Windows commands
+      instead of cmd.exe. Do not pass -NoProfile to powershell.exe: the user's
+      profile sets the output encoding to UTF-8 so Chinese and other non-ASCII
+      text is transmitted correctly. The profile automatically skips interactive
+      decorations when output is redirected.
 
-      需要创建 symlink 时，使用 PowerShell 的
-      `[NativeLinks]::CreateSymbolicLink($source, $dest, 3)`。
+      To create symlinks, use PowerShell's
+      `[NativeLinks]::CreateSymbolicLink($source, $dest, 3)`.
     ''
   ];
 }

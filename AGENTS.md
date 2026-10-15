@@ -100,9 +100,9 @@ build changed packages separately to verify packaging and entrypoint imports.
 
 For risky Home Manager changes, run `check-activation` before `hms` or `rebuild`. It can dry-run non-local architectures, but it only validates the activation package build plan; it does not prove the remote host can activate successfully or decrypt its sops secrets.
 
-## Commit & Pull Request Guidelines
+## Pull Request Guidelines
 
-Recent commits use concise scoped messages, often in Chinese, such as `home-manager: 加入 rust 相关工具` or `refactor: 重构 flake module 与 nix settings`. Use a short scope followed by the change. Mention affected hosts or modules when relevant. PRs should describe the configuration impact, list validation commands run, and call out secret, cache, or host-registry changes explicitly.
+PRs should describe the configuration impact, list validation commands run, and call out secret, cache, or host-registry changes explicitly.
 
 ## Security & Configuration Tips
 
