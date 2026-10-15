@@ -90,6 +90,12 @@ in {
         }));
       };
 
+      reserved-home-names = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = ["openai" "list-sessions" "generate-profile" "notify" "wecom-relay" "home-migrate"];
+        description = "Reserved home names whose codex-<name> commands conflict with the official home or helper commands. Extend this list when adding helpers.";
+      };
+
       hooks-for-home = lib.mkOption {
         type = lib.types.functionTo upstream.hooks.type;
         default = _: cfg.hooks;
@@ -186,6 +192,24 @@ in {
         chmod +x "$out/bin/codex"
       '';
     };
+    forall-codex = pkgs.writeShellScriptBin "forall-codex" ''
+      if [ "$#" -eq 0 ]; then
+        echo 'usage: forall-codex <codex arguments...>' >&2
+        exit 2
+      fi
+      status=0
+      for command in ${lib.escapeShellArgs ([(lib.getExe codex-openai)] ++ lib.mapAttrsToList (name: home: "${home.package}/bin/codex-${name}") extra-homes)}; do
+        if "$command" "$@"; then
+          :
+        else
+          result=$?
+          printf 'forall-codex: %s exited with status %s\n' "''${command##*/}" "$result" >&2
+          status=1
+        fi
+      done
+      exit "$status"
+    '';
+
     official-files =
       common-files
       ++ ["config.toml"]
@@ -227,8 +251,8 @@ in {
     lib.mkIf cfg.enable {
       assertions = [
         {
-          assertion = lib.all (name: name != "openai" && builtins.match "[a-z0-9][a-z0-9-]*" name != null) (lib.attrNames cfg.homes);
-          message = "my.codex.homes names must use lowercase letters, digits or hyphens, and cannot be openai (reserved for codex).";
+          assertion = lib.all (name: !(lib.elem name (["openai"] ++ cfg.reserved-home-names)) && builtins.match "[a-z0-9][a-z0-9-]*" name != null) (lib.attrNames cfg.homes);
+          message = "my.codex.homes names must use lowercase letters, digits or hyphens, and cannot use reserved names: ${lib.concatStringsSep ", " (lib.unique (["openai"] ++ cfg.reserved-home-names))}.";
         }
       ];
 
@@ -248,10 +272,10 @@ in {
       # Keep Codex config mutable because Codex writes trust/bookkeeping state to
       # config.toml at runtime. See:
       # https://github.com/nix-community/home-manager/issues/9397
-      programs.zsh.initContent = lib.mkAfter (lib.concatMapStringsSep "\n" (name: "compdef _codex codex-${name}") (lib.attrNames extra-homes));
+      programs.zsh.initContent = lib.mkAfter ("compdef _codex forall-codex\n" + lib.concatMapStringsSep "\n" (name: "compdef _codex codex-${name}") (lib.attrNames extra-homes));
 
       home = {
-        packages = map (home: home.package) (lib.attrValues extra-homes);
+        packages = [forall-codex] ++ map (home: home.package) (lib.attrValues extra-homes);
         sessionVariables = {
           CODEX_HOME = lib.mkForce official-home;
           CODEX_NOTIFY_HOMES = lib.concatStringsSep ":" cfg.home-directories;
