@@ -1,8 +1,4 @@
-{
-  self,
-  inputs,
-  ...
-}: {
+{inputs, ...}: {
   perSystem = {
     pkgs,
     lib,
@@ -13,15 +9,6 @@
       lib.filterAttrs
       (name: kind: kind == "directory" && builtins.pathExists (../packages + "/${name}/pyproject.toml"))
       (builtins.readDir ../packages);
-    type-check = pkgs.writeShellApplication {
-      name = "repo-type-check";
-      text = lib.concatMapStringsSep "\n" (name: let
-        application = self.packages.${system}.${name};
-        python = pkgs.python314.withPackages (_: application.propagatedBuildInputs);
-      in ''
-        ${lib.getExe pkgs.ty} check --project packages/${name} --python ${lib.getExe python}
-      '') (lib.attrNames python-packages);
-    };
     config = inputs.nixago.lib.${system}.make {
       output = ".pre-commit-config.yaml";
       format = "yaml";
@@ -51,15 +38,24 @@
               entry = "${lib.getExe pkgs.ruff} format";
               types = ["python"];
             }
-            {
-              id = "ty";
-              name = "ty";
-              language = "system";
-              entry = lib.getExe type-check;
-              types = ["python"];
-              pass_filenames = false;
-            }
           ];
+        }
+        {
+          repo = "https://github.com/astral-sh/ty-pre-commit";
+          rev = "v0.0.88";
+          hooks = map (name: {
+            id = "ty";
+            alias = "ty-${name}";
+            name = "ty (${name})";
+            # These independent Nix packages have no uv lockfiles or environments.
+            args = [
+              "--isolated"
+              "--project"
+              "packages/${name}"
+              "--python"
+              (lib.getExe pkgs.python314)
+            ];
+          }) (lib.attrNames python-packages);
         }
       ];
     };
