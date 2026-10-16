@@ -1,0 +1,3 @@
+interface:
+  display_name: "Python 项目 Nix Flake"
+  short_description: "用 uv2nix 为 Python 项目配置可复现打包、开发环境和检查"
