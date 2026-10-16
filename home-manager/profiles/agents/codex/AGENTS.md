@@ -18,11 +18,10 @@ for example `home-manager: 加入 rust 相关工具` or `refactor: 重构配置�
 Mention affected components when relevant. Follow an explicit repository commit
 convention when one is defined.
 
-For nontrivial changes, add a Chinese commit body separated from the title by a
-blank line. Explain the problem or motivation, the resulting behavior, and
-relevant validation. Use unindented bullet points when helpful. Describe the
-final change rather than listing intermediate attempts. A title alone is enough
-for a simple, self-explanatory change.
+Commit messages should only describe what changed. Prefer a title alone; add a
+short Chinese body, separated by a blank line, only when the title cannot convey
+the changes clearly. Omit validation results, work logs, and intermediate
+attempts.
 
 Commit coherent steps early while working. For larger work, start a development
 branch with `git switch -c <branch-name>` and make focused commits there.
