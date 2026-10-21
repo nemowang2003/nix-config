@@ -28,8 +28,8 @@
     checks =
       package-tests
       // {
-        audio-transcribe-imports = inputs.audio-transcribe.checks.${pkgs.stdenv.hostPlatform.system}.imports;
-        llama-on-demand-proxy-import = inputs.llama-on-demand.checks.${pkgs.stdenv.hostPlatform.system}.proxy-import;
+        audio-transcribe-uv-lock = inputs.audio-transcribe.checks.${pkgs.stdenv.hostPlatform.system}.uv-lock;
+        llama-on-demand-cli = inputs.llama-on-demand.checks.${pkgs.stdenv.hostPlatform.system}.cli;
         llama-on-demand-unit = inputs.llama-on-demand.checks.${pkgs.stdenv.hostPlatform.system}.unit;
         codex-mutable-config = let
           valid = lib.all (home: let

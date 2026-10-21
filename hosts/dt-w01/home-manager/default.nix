@@ -1,5 +1,6 @@
 {
   pkgs,
+  inputs,
   lib,
   self,
   ...
@@ -9,6 +10,17 @@ in {
   imports = self.lib.collect-nix-files ./profiles;
 
   home.stateVersion = "25.11";
+
+  home.packages = [
+    (inputs.audio-transcribe.lib.mkPackage {
+      inherit pkgs;
+      cudaSupport = true;
+    })
+    (inputs.ja2zh-srt.lib.mkPackage {
+      inherit pkgs;
+      cudaSupport = true;
+    })
+  ];
 
   # zshenv covers interactive SSH shells and non-interactive SSH commands.
   # Child shells inherit the resolved PATH without querying Windows again.
