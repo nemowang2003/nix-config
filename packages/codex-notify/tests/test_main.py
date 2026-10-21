@@ -54,18 +54,27 @@ class NotifyTests(unittest.TestCase):
                 Path(directory) / name for name in [".codex-openai", ".codex-tca", ".codex-wcy"]
             ]
             for index, home in enumerate(homes):
-                self.make_database(home, f"thread-{index}")
+                self.make_database(
+                    home, f"thread-{index}", cwd=f"/work/项目 {index}", title="test\n任务"
+                )
             Path(notify.homes_file).write_text(json.dumps(list(map(str, homes))))
             with (
                 mock.patch.object(
-                    notify, "fzf_select", side_effect=["thread-2\t[.codex-wcy] test", "me"]
+                    notify,
+                    "fzf_select",
+                    side_effect=["thread-2\t[.codex-wcy]\t/work/项目 2\ttest 任务", "me"],
                 ) as select,
                 mock.patch.object(notify, "load_routes", return_value={"me": {}}),
                 mock.patch.object(notify, "cmd_route", return_value=0) as route,
             ):
                 self.assertEqual(notify.cmd_pick(), 0)
-                for home in homes:
-                    self.assertIn(f"[{home.name}] test", select.call_args_list[0].args[1])
+                choices = select.call_args_list[0].args[1].splitlines()
+                self.assertEqual(len(choices), 3)
+                for index, home in enumerate(homes):
+                    self.assertIn(
+                        f"thread-{index}\t[{home.name}]\t/work/项目 {index}\ttest 任务", choices
+                    )
+                self.assertIn("CWD", select.call_args_list[0].kwargs["header"])
                 route.assert_called_once_with(["route", "thread-2", "me"])
 
     def test_markdown_preserves_structure_and_collapses_blank_lines(self):
@@ -344,12 +353,16 @@ class NotifyTests(unittest.TestCase):
         fork.assert_called_once_with()
         send_serverchan.assert_not_called()
 
-    def make_database(self, home, thread_id):
+    def make_database(self, home, thread_id, *, cwd="/work/project", title="test"):
         home.mkdir()
         connection = sqlite3.connect(home / "state_5.sqlite")
         try:
-            connection.execute("CREATE TABLE threads (id TEXT, title TEXT, updated_at INTEGER)")
-            connection.execute("INSERT INTO threads VALUES (?, ?, ?)", (thread_id, "test", 1))
+            connection.execute(
+                "CREATE TABLE threads (id TEXT, title TEXT, updated_at INTEGER, cwd TEXT)"
+            )
+            connection.execute(
+                "INSERT INTO threads VALUES (?, ?, ?, ?)", (thread_id, title, 1, cwd)
+            )
             connection.commit()
         finally:
             connection.close()

@@ -96,7 +96,8 @@ codex-forall app-server daemon update --from-cli --yes
 没有此清单时，独立运行的通知工具回退到 `CODEX_NOTIFY_HOMES`，最后才是单个
 `CODEX_HOME`（默认 `.codex-openai`）；不再猜测固定的 TCA/WCY 路径。
 清单或数据库无法读取时，`cleanup` 保留已有路由，避免误删。
-`codex-notify pick` 在每个 session 旁显示所属 home；路由仍按全局唯一 thread UUID 保存。
+`codex-notify pick` 的会话列表显示 UUID、所属 home、cwd 和标题；
+标题与 cwd 中的换行、制表符折叠为空格，路由仍按全局唯一 thread UUID 保存。
 手动复制同一 UUID 到多个 home 会共享通知路由，relay 会拒绝旧 token 的歧义查询。
 
 通知 hook 可用 `codex-notify notify codex --title CLI完成 --route xyz`

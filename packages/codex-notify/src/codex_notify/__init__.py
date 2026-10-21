@@ -139,7 +139,8 @@ def read_threads():
             rows.extend(
                 (*row, str(database.parent))
                 for row in connection.execute(
-                    "SELECT id, COALESCE(title, '(untitled)'), updated_at FROM threads"
+                    "SELECT id, COALESCE(title, '(untitled)'), updated_at, "
+                    "COALESCE(cwd, '(unknown)') FROM threads"
                 )
             )
     return sorted(rows, key=lambda row: row[2], reverse=True)
@@ -381,10 +382,13 @@ def dispatch_notifications():
         os._exit(0)
 
 
-def fzf_select(prompt, feed):
+def fzf_select(prompt, feed, *, header=None):
     try:
+        arguments = [FZF, f"--prompt={prompt}"]
+        if header:
+            arguments.extend(["--header", header])
         result = subprocess.run(
-            [FZF, f"--prompt={prompt}"],
+            arguments,
             input=feed,
             text=True,
             stdout=subprocess.PIPE,
@@ -427,14 +431,16 @@ def cmd_pick():
     if not rows:
         print("no threads found", file=sys.stderr)
         return 1
-    # Thread titles can contain newlines, so never rely on fzf's line layout
-    # to carry the id back. Feed one line per thread with a TAB separator and
-    # a flattened title; parse the id from the part before the first TAB.
+    # Flatten display fields so embedded whitespace cannot create extra rows
+    # or columns. Keep the thread UUID separate from the labels for selection.
     lines = [
-        f"{tid}\t[{Path(home).name}] {re.sub(r'\s+', ' ', title).strip()}"
-        for tid, title, _updated, home in rows
+        "\t".join(
+            [tid, f"[{Path(home).name}]"]
+            + [re.sub(r"\s+", " ", value).strip() for value in (cwd, title)]
+        )
+        for tid, title, _updated, cwd, home in rows
     ]
-    selection = fzf_select("session> ", "\n".join(lines))
+    selection = fzf_select("session> ", "\n".join(lines), header="SESSION\tHOME\tCWD\tTITLE")
     if not selection:
         return 0
     thread_id = selection.split("\t", 1)[0]
