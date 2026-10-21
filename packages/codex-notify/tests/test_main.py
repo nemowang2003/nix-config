@@ -192,6 +192,62 @@ class NotifyTests(unittest.TestCase):
             queue.assert_called_once()
             self.assertEqual(queue.call_args.args[-1], "turn")
 
+    def test_notify_route_precedence_applies_to_both_channels_without_saving(self):
+        routes = {
+            name: {"serverchan": f"https://{name}.invalid", "wecom": f"user-{name}"}
+            for name in ["me", "xyz", "saved"]
+        }
+        cases = [
+            ([], {}, "me"),
+            (["--route", "xyz"], {}, "xyz"),
+            (["Codex", "--route=xyz"], {}, "xyz"),
+            ([], {"profile": "saved"}, "saved"),
+            (["--route", "xyz"], {"profile": "saved"}, "saved"),
+            (["--route", "xyz"], {"profile": ""}, "xyz"),
+            (["--route", "missing"], {"profile": "saved"}, "saved"),
+            (["--route", "xyz"], {"profile": "missing"}, None),
+            (["--route", "missing"], {}, None),
+        ]
+        for args, state, expected in cases:
+            with (
+                self.subTest(args=args, state=state),
+                mock.patch.object(
+                    notify,
+                    "stdin_json",
+                    return_value={"session_id": "thread", "turn_id": "turn"},
+                ),
+                mock.patch.object(notify, "load_state", return_value=state),
+                mock.patch.object(notify, "load_routes", return_value=routes),
+                mock.patch.object(notify, "save_state") as save,
+                mock.patch.object(notify, "queue_serverchan") as serverchan,
+                mock.patch.object(notify, "queue_wecom_push") as wecom,
+                mock.patch.object(notify, "dispatch_notifications"),
+                mock.patch.object(notify, "log"),
+            ):
+                self.assertEqual(notify.cmd_notify(["notify", *args, "--wecom-relay"]), 0)
+                save.assert_not_called()
+                if expected is None:
+                    serverchan.assert_not_called()
+                    wecom.assert_not_called()
+                else:
+                    serverchan.assert_called_once()
+                    self.assertEqual(serverchan.call_args.args[-1], expected)
+                    wecom.assert_called_once()
+                    self.assertEqual(wecom.call_args.args[2], routes[expected]["wecom"])
+
+    def test_invalid_notify_arguments_do_not_block_hook_or_send_notifications(self):
+        for args in [["--route"], ["--route", "--wecom-relay"], ["--unknown"]]:
+            with (
+                self.subTest(args=args),
+                mock.patch.object(notify, "stdin_json") as payload,
+                mock.patch.object(notify, "dispatch_notifications") as dispatch,
+                mock.patch.object(notify, "log") as log,
+            ):
+                self.assertEqual(notify.main(["codex-notify", "notify", *args]), 0)
+                payload.assert_not_called()
+                dispatch.assert_not_called()
+                log.assert_called_once()
+
     @mock.patch.object(notify, "send_serverchan")
     @mock.patch.object(notify.os, "fork", return_value=123)
     def test_notification_dispatch_returns_in_parent(self, fork, send_serverchan):

@@ -54,24 +54,25 @@ function _codex-notify {
                 _message 'thread ID'
               fi
               ;;
-            profile)
-              local routes="${XDG_CONFIG_HOME:-$HOME/.config}/codex-notify/routes.json"
-              if [[ -r $routes ]]; then
-                profiles=("${(@f)$(@jq@ -r 'keys[]' "$routes" 2>/dev/null)}")
-                _values -w 'route profile' "${profiles[@]}"
-              else
-                _message 'route profile'
-              fi
-              ;;
           esac
           ;;
         notify)
           _arguments \
             '--wecom-relay[also send through the WeCom relay]' \
             '--codex-home[home owning this notification]:directory:_files -/' \
+            '--route[fallback route when the session has no saved profile (default: me)]:route profile:->profile' \
             '1:notification title:'
           ;;
       esac
+      if [[ $state == profile ]]; then
+        local routes="${XDG_CONFIG_HOME:-$HOME/.config}/codex-notify/routes.json"
+        if [[ -r $routes ]]; then
+          profiles=("${(@f)$(@jq@ -r 'keys[]' "$routes" 2>/dev/null)}")
+          _values -w 'route profile' "${profiles[@]}"
+        else
+          _message 'route profile'
+        fi
+      fi
       ;;
   esac
 }

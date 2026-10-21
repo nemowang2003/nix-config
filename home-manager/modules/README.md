@@ -99,6 +99,9 @@ codex-forall app-server daemon update --from-cli --yes
 `codex-notify pick` 在每个 session 旁显示所属 home；路由仍按全局唯一 thread UUID 保存。
 手动复制同一 UUID 到多个 home 会共享通知路由，relay 会拒绝旧 token 的歧义查询。
 
+通知 hook 可用 `codex-notify notify Codex --route xyz` 指定未绑定会话的收件人；
+会话保存的 `profile` 优先于 `--route`，后者默认为 `me`，不会写入会话路由状态。
+
 `codex-list-sessions` 是读取同一清单的可执行命令，聚合所有 home，按 home 分组并显示
 目录、UUID、标题，默认交给 `$EDITOR` 查看，`--stdout` 输出到标准输出。
 从旧 alias 升级后，需要重新打开 shell，或执行一次 `unalias codex-list-sessions`。

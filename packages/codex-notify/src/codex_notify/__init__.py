@@ -9,7 +9,8 @@ Hook wiring lives in home-manager/profiles/agents/codex/default.nix:
 
 State is one JSON file per thread at
 $XDG_STATE_HOME/codex-notify/<sha256(thread)>.json with the `profile` (route
-name).
+name). A saved profile takes precedence over `notify --route <name>`;
+`--route` defaults to `me` and never changes the saved state.
 
 Codex has no thread-deletion hook (SessionEnd fires on every teardown with a
 constant reason), so the sqlite `threads` table is the source of truth.
@@ -26,6 +27,7 @@ the outbox, which decides nothing on its own. Only profile names are ever
 logged; URLs and userids appear solely in short-lived argv or outbox lines.
 """
 
+import argparse
 import base64
 import fcntl
 import hashlib
@@ -490,12 +492,22 @@ def cmd_pick():
 
 
 def cmd_notify(args):
-    title = args[1] if len(args) > 1 else "Codex"
-    wecom_enabled = "--wecom-relay" in args[2:]
-    codex_home = os.environ.get("CODEX_HOME", os.path.expanduser("~/.codex-openai"))
-    if "--codex-home" in args[2:]:
-        codex_home = args[args.index("--codex-home", 2) + 1]
-    codex_home = str(Path(codex_home).expanduser().resolve())
+    parser = argparse.ArgumentParser(prog="codex-notify notify", exit_on_error=False)
+    parser.add_argument("title", nargs="?", default="Codex")
+    parser.add_argument("--wecom-relay", action="store_true")
+    parser.add_argument(
+        "--codex-home",
+        default=os.environ.get("CODEX_HOME", os.path.expanduser("~/.codex-openai")),
+    )
+    parser.add_argument(
+        "--route",
+        default=DEFAULT_PROFILE,
+        help="fallback route when the session has no saved profile (default: %(default)s)",
+    )
+    options, unknown = parser.parse_known_args(args[1:])
+    if unknown:
+        raise ValueError(f"unrecognized notify arguments: {' '.join(unknown)}")
+    codex_home = str(Path(options.codex_home).expanduser().resolve())
     payload = stdin_json()
 
     # A blocking Stop hook elsewhere re-runs the whole Stop set in the same
@@ -509,11 +521,11 @@ def cmd_notify(args):
     turn_id = payload.get("turn_id") or ""
     content = payload.get("last_assistant_message") or "Task complete"
     host = socket.gethostname().split(".")[0]
-    full_title = f"{title}@{host}" if host else title
+    full_title = f"{options.title}@{host}" if host else options.title
     log(f"notify stop thread={thread_id} turn={turn_id} content_bytes={len(content.encode())}")
 
     state = load_state(thread_id)
-    profile = state.get("profile") or DEFAULT_PROFILE
+    profile = state.get("profile") or options.route
     route = load_routes().get(profile) or {}
     url = route.get("serverchan") or ""
     chatid = route.get("wecom") or ""
@@ -522,7 +534,7 @@ def cmd_notify(args):
     else:
         log("notify serverchan skip: url profile missing")
 
-    if chatid and wecom_enabled:
+    if chatid and options.wecom_relay:
         queue_wecom_push(thread_id, content, chatid, codex_home, turn_id)
     elif chatid:
         log("notify wecom skip: no relay configured on this host")
