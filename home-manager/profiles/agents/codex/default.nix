@@ -48,7 +48,9 @@
               [
                 (lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.codex-notify)
                 "notify"
-                "Codex"
+                "codex"
+                "--title"
+                "CLI完成"
                 "--codex-home"
                 codex-home
               ]

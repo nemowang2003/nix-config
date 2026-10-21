@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NonInteractive -WindowStyle Hidden -File \"C:\\Users\\nemo\\.codex\\hooks\\codex-notify-wsl.ps1\" -CodexHome \"C:\\Users\\nemo\\.codex\" -Route xyz",
+            "timeout": 45,
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

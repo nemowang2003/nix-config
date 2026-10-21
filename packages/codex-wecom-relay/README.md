@@ -9,6 +9,10 @@ turn's agent output to WeCom.
 
 The stream contains assistant text from the turn's intermediate and final
 messages; the Stop-hook notification contains only `last_assistant_message`.
+The notification outbox can carry an exact `title`, supplied by
+`codex-notify notify --title` after prefixing the local hostname;
+the relay preserves it in every part.
+Entries without a title keep the legacy `Codex 完成` heading.
 Once that notification is fully acknowledged, the still-editable stream drops
 the final assistant message to avoid repeating the answer. Both carry a stable reply token identifying the
 owning home and thread, including the stream's initial queued acknowledgement.
@@ -132,3 +136,24 @@ inspect the TUI's local Tab queue.
 The relay and notification hook use absolute Nix store paths. The relay is not
 installed into the Home Manager PATH; `codex-notify` remains available there for
 manual routing with `pick`, `route <thread-id> <name>`, and `cleanup`.
+
+## Native Windows desktop through WSL
+
+On dt-w01, `--windows-codex-home /mnt/c/Users/nemo/.codex` registers the native
+desktop home separately from Linux homes. The Windows Stop hook is copied
+manually, outside Home Manager activation; see the
+[hook configuration guide](../../hosts/dt-w01/windows/codex/README.md).
+
+Each Stop refreshes `wsl-bridge.json` in the native home with the owning
+Windows runtime executable and native home path. The relay invokes that binary
+through WSL interop, passing native `CODEX_HOME` with `WSLENV=...:CODEX_HOME/w`.
+It submits `thread/queue/add` over stdio without resuming the thread in the
+second process. The desktop's queue watcher executes the reply when its loaded
+thread becomes idle. Windows drive paths use WSL's default `/mnt/<drive>` mounts.
+
+This backend sends a finished, replyable queue acknowledgement; final output
+arrives through the Stop hook. It does not subscribe to the desktop process's
+stdio events, so Windows replies have no intermediate live stream. Keep the
+desktop running with that thread loaded; paused or unloaded threads need to be
+resumed. Submission certainty and duplicate protection use the same ledger as
+Linux replies. Native homes are never inspected with Linux SQLite connections.

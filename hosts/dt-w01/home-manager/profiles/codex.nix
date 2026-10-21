@@ -34,6 +34,8 @@ in {
           "${config.xdg.configHome}/codex-wecom-relay/wecom.json"
           "--codex-bin"
           (lib.getExe config.my.codex.package)
+          "--windows-codex-home"
+          "/mnt/c/Users/nemo/.codex"
         ]
         ++ lib.concatMap (home: ["--codex-home" home]) config.my.codex.home-directories
       );

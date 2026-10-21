@@ -77,12 +77,79 @@ class NotifyTests(unittest.TestCase):
             path = Path(directory) / "outbox.jsonl"
             content = "第一段。\n\n" + "甲😀" * 10000
             with mock.patch.object(notify, "reply_outbox", str(path)):
-                notify.queue_wecom_push("thread", content, "user", "/home/test/.codex-tca", "turn")
+                notify.queue_wecom_push(
+                    "thread",
+                    content,
+                    "user",
+                    "/home/test/.codex-tca",
+                    "turn",
+                    title="dt-w01 ChatGPT Desktop完成",
+                )
             entry = json.loads(path.read_text())
             self.assertEqual(entry["thread"], "thread")
             self.assertEqual(entry["turn"], "turn")
             self.assertEqual(entry["codex_home"], "/home/test/.codex-tca")
             self.assertEqual(entry["content"], content)
+            self.assertEqual(entry["title"], "dt-w01 ChatGPT Desktop完成")
+
+    def test_desktop_skips_temporary_threads_but_preserves_persisted_json_answers(self):
+        for transcript in [None, "", r"C:\Users\nemo\.codex\sessions\rollout.jsonl"]:
+            with (
+                self.subTest(transcript=transcript),
+                mock.patch.object(
+                    notify,
+                    "stdin_json",
+                    return_value={
+                        "session_id": "thread",
+                        "turn_id": "turn",
+                        "transcript_path": transcript,
+                        "last_assistant_message": '{"exclude":[]}',
+                    },
+                ),
+                mock.patch.object(notify, "load_state", return_value={}),
+                mock.patch.object(
+                    notify,
+                    "load_routes",
+                    return_value={
+                        "xyz": {"serverchan": "https://example.invalid", "wecom": "user"},
+                    },
+                ),
+                mock.patch.object(notify, "queue_serverchan") as serverchan,
+                mock.patch.object(notify, "queue_wecom_push") as wecom,
+                mock.patch.object(notify, "dispatch_notifications") as dispatch,
+                mock.patch.object(notify, "log"),
+                mock.patch.object(
+                    notify.socket, "gethostname", return_value="another-host.example"
+                ),
+            ):
+                title = "another-host ChatGPT Desktop完成"
+                self.assertEqual(
+                    notify.cmd_notify(
+                        [
+                            "notify",
+                            "chatgpt-desktop",
+                            "--route",
+                            "xyz",
+                            "--title",
+                            "ChatGPT Desktop完成",
+                            "--require-transcript",
+                            "--wecom-relay",
+                        ]
+                    ),
+                    0,
+                )
+                if transcript:
+                    self.assertEqual(
+                        serverchan.call_args.args[2:4],
+                        ("chatgpt-desktop@another-host", '{"exclude":[]}'),
+                    )
+                    self.assertEqual(wecom.call_args.kwargs, {"title": title})
+                    self.assertEqual(wecom.call_args.args[1], '{"exclude":[]}')
+                    dispatch.assert_called_once()
+                else:
+                    serverchan.assert_not_called()
+                    wecom.assert_not_called()
+                    dispatch.assert_not_called()
 
     def test_state_round_trip_is_keyed_by_thread(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -94,6 +161,27 @@ class NotifyTests(unittest.TestCase):
                 self.assertEqual(notify.load_state("thread-b"), {})
             finally:
                 notify.state_dir = previous
+
+    def test_cli_titles_use_lowercase_label_and_hostname_for_each_channel(self):
+        with (
+            mock.patch.object(notify, "stdin_json", return_value={"session_id": "thread"}),
+            mock.patch.object(notify, "load_state", return_value={}),
+            mock.patch.object(
+                notify,
+                "load_routes",
+                return_value={
+                    "me": {"serverchan": "https://example.invalid", "wecom": "user"},
+                },
+            ),
+            mock.patch.object(notify.socket, "gethostname", return_value="dt-w01.example"),
+            mock.patch.object(notify, "queue_serverchan") as serverchan,
+            mock.patch.object(notify, "queue_wecom_push") as wecom,
+            mock.patch.object(notify, "dispatch_notifications"),
+            mock.patch.object(notify, "log"),
+        ):
+            notify.cmd_notify(["notify", "codex", "--title", "CLI完成", "--wecom-relay"])
+            self.assertEqual(serverchan.call_args.args[2], "codex@dt-w01")
+            self.assertEqual(wecom.call_args.kwargs["title"], "dt-w01 CLI完成")
 
     def test_invalid_state_is_ignored(self):
         with tempfile.TemporaryDirectory() as directory:

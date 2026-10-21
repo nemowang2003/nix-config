@@ -59,9 +59,11 @@ function _codex-notify {
         notify)
           _arguments \
             '--wecom-relay[also send through the WeCom relay]' \
+            '--title[WeCom title, prefixed with hostname]:title:' \
+            '--require-transcript[skip temporary sessions without a transcript path]' \
             '--codex-home[home owning this notification]:directory:_files -/' \
             '--route[fallback route when the session has no saved profile (default: me)]:route profile:->profile' \
-            '1:notification title:'
+            '1:ServerChan label:'
           ;;
       esac
       if [[ $state == profile ]]; then

@@ -99,8 +99,19 @@ codex-forall app-server daemon update --from-cli --yes
 `codex-notify pick` 在每个 session 旁显示所属 home；路由仍按全局唯一 thread UUID 保存。
 手动复制同一 UUID 到多个 home 会共享通知路由，relay 会拒绝旧 token 的歧义查询。
 
-通知 hook 可用 `codex-notify notify Codex --route xyz` 指定未绑定会话的收件人；
+通知 hook 可用 `codex-notify notify codex --title CLI完成 --route xyz`
+指定未绑定会话的收件人；
 会话保存的 `profile` 优先于 `--route`，后者默认为 `me`，不会写入会话路由状态。
+
+CLI Stop hook 使用 `notify codex --title CLI完成 --codex-home <home>`，
+ServerChan 标题为 `codex@<hostname>`，企业微信标题为 `<hostname> CLI完成`。
+桌面端分别使用 `chatgpt-desktop@<hostname>` 和 `<hostname> ChatGPT Desktop完成`。
+hostname 由运行通知工具的主机取得，`--title` 仅控制企业微信标题部分。
+
+dt-w01 relay 还显式登记 Windows 原生桌面 home，其 Stop hook 按
+[独立 hook 配置说明](../../hosts/dt-w01/windows/codex/README.md) 手动复制，不进入 activation。
+该 home 不加入 Linux `home-directories`；回复通过 Windows 原生队列提交，
+完成结果由 Stop hook 通知，不提供企业微信实时过程流。
 
 `codex-list-sessions` 是读取同一清单的可执行命令，聚合所有 home，按 home 分组并显示
 目录、UUID、标题，默认交给 `$EDITOR` 查看，`--stdout` 输出到标准输出。

@@ -2,7 +2,7 @@
 
 Hook wiring lives in home-manager/profiles/agents/codex/default.nix:
 
-- Stop -> `codex-notify notify Codex`
+- Stop -> `codex-notify notify codex --title CLI完成`
     Runs at the end of every turn and performs the actual notification. It
     always exits 0: a non-zero Stop hook exit would block or continue the
     turn.
@@ -211,7 +211,7 @@ def wecom_markdown(content):
     return "\n".join(normalized)
 
 
-def queue_wecom_push(thread_id, content, chatid, codex_home, turn_id=None):
+def queue_wecom_push(thread_id, content, chatid, codex_home, turn_id=None, *, title=None):
     """Ask the dt-w01 WeCom long-connection to push a replyable notification.
 
     The chatid is resolved here from the thread's route; the transport on the
@@ -225,6 +225,7 @@ def queue_wecom_push(thread_id, content, chatid, codex_home, turn_id=None):
                 "turn": turn_id,
                 "codex_home": codex_home,
                 "content": wecom_markdown(content),
+                "title": title,
                 "chatid": chatid,
                 "at": int(time.time()),
             }
@@ -449,7 +450,18 @@ def cmd_pick():
 
 def cmd_notify(args):
     parser = argparse.ArgumentParser(prog="codex-notify notify", exit_on_error=False)
-    parser.add_argument("title", nargs="?", default="Codex")
+    parser.add_argument(
+        "label", nargs="?", default="Codex", help="ServerChan label before @hostname"
+    )
+    parser.add_argument(
+        "--title",
+        help="WeCom title, prefixed with the local hostname",
+    )
+    parser.add_argument(
+        "--require-transcript",
+        action="store_true",
+        help="skip temporary sessions without a hook transcript path",
+    )
     parser.add_argument("--wecom-relay", action="store_true")
     parser.add_argument(
         "--codex-home",
@@ -473,11 +485,18 @@ def cmd_notify(args):
         log("notify skip: stop_hook_active=true (repeat run)")
         return 0
 
+    if options.require_transcript and not payload.get("transcript_path"):
+        log(f"notify skip: no transcript thread={payload.get('session_id') or ''}")
+        return 0
+
     thread_id = payload.get("session_id") or ""
     turn_id = payload.get("turn_id") or ""
     content = payload.get("last_assistant_message") or "Task complete"
     host = socket.gethostname().split(".")[0]
-    full_title = f"{options.title}@{host}" if host else options.title
+    wecom_title = options.title
+    if wecom_title and host:
+        wecom_title = f"{host} {wecom_title}"
+    full_title = f"{options.label}@{host}" if host else options.label
     log(f"notify stop thread={thread_id} turn={turn_id} content_bytes={len(content.encode())}")
 
     state = load_state(thread_id)
@@ -491,7 +510,7 @@ def cmd_notify(args):
         log("notify serverchan skip: url profile missing")
 
     if chatid and options.wecom_relay:
-        queue_wecom_push(thread_id, content, chatid, codex_home, turn_id)
+        queue_wecom_push(thread_id, content, chatid, codex_home, turn_id, title=wecom_title)
     elif chatid:
         log("notify wecom skip: no relay configured on this host")
     else:

@@ -736,6 +736,25 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("回复本条消息继续", content)
                 self.assertFalse(any(lock.locked() for lock in relay._submission_locks.values()))
 
+    async def test_completion_uses_producer_title_and_legacy_outbox_keeps_default(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            for title in [None, "dt-w01 ChatGPT Desktop完成"]:
+                entry = {
+                    "thread": "thread",
+                    "codex_home": str(relay.codex_homes[0]),
+                    "chatid": "user",
+                    "content": "完成正文",
+                }
+                if title is not None:
+                    entry["title"] = title
+                Path(relay.outbox).write_text(json.dumps(entry) + "\n")
+                send = AsyncMock(return_value={"errcode": 0})
+                with patch.object(relay, "_send", send):
+                    await relay._process_outbox(FakeWebSocket())
+                content = send.call_args.args[2]["markdown"]["content"]
+                self.assertTrue(content.startswith(f"**{title or 'Codex 完成'}**\n\n完成正文"))
+
     async def test_long_completion_resumes_after_last_ack_and_receipt_survives_restart(self):
         with tempfile.TemporaryDirectory() as directory:
             relay = self.make_relay(directory)
@@ -1023,6 +1042,52 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
                     )
                     self.assertEqual(start.call_args.kwargs["env"]["CODEX_HOME"], str(home))
                     self.assertEqual(start.call_args.kwargs["cwd"], home)
+
+    async def test_windows_home_uses_queue_adapter_without_starting_linux_daemon(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            home = Path(directory) / "windows"
+            relay.windows_codex_homes = (home,)
+            with patch.object(relay_module.asyncio, "create_subprocess_exec") as start:
+                app = await relay._app_for_thread("thread", str(home))
+                self.assertIsInstance(app, relay_module.WindowsAppServer)
+                self.assertEqual(app.home, home)
+                start.assert_not_called()
+
+    async def test_windows_reply_finishes_queue_ack_and_preserves_duplicate_protection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            relay = self.make_relay(directory)
+            home = Path(directory) / "windows"
+            relay.windows_codex_homes = (home,)
+            callback = self.callback(relay)
+            token = relay._new_token("thread", str(home))
+            callback["body"]["quote"]["text"]["content"] = f"r#{token}"
+            app = relay_module.WindowsAppServer(home)
+            ws = FakeWebSocket(relay=relay)
+            with (
+                patch.object(relay, "_app_for_thread", return_value=app),
+                patch.object(app, "connect"),
+                patch.object(app, "initialize"),
+                patch.object(app, "resume_thread") as resume,
+                patch.object(
+                    app, "queue_turn", return_value={"queuedSubmission": {"id": "windows-queue"}}
+                ) as submit,
+            ):
+                await relay._handle_callback(ws, callback)
+                await relay._handle_callback(ws, callback)
+                submit.assert_called_once()
+                resume.assert_not_called()
+            stream = ws.messages[0]["body"]["stream"]
+            self.assertTrue(stream["finish"])
+            self.assertIn("Windows 桌面端", stream["content"])
+            self.assertIn(f"r#{token}", stream["content"])
+            self.assertEqual(relay._submissions["message"]["state"], "accepted")
+            self.assertEqual(relay._submissions["message"]["submission_id"], "windows-queue")
+            restarted = self.make_relay(directory)
+            self.assertEqual(restarted._tokens[token]["codex_home"], str(home))
+            with patch.object(restarted, "_app_for_thread") as start:
+                await restarted._handle_callback(ws, callback)
+                start.assert_not_called()
 
     async def test_old_token_finds_tca_session_when_official_daemon_is_absent(self):
         with tempfile.TemporaryDirectory() as directory:

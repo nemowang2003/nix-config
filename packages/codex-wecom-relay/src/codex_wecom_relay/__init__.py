@@ -42,7 +42,7 @@ import sys
 import time
 from collections import deque
 from contextlib import closing
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from websockets.asyncio.client import connect, unix_connect
 
@@ -95,6 +95,8 @@ class AppServerRejected(AppServerError):
 
 class AppServer:
     """Async JSON-RPC client for `codex app-server` over WebSocket."""
+
+    queue_only = False
 
     def __init__(self, path):
         self.path = path
@@ -196,13 +198,8 @@ class AppServer:
             },
         )
 
-    async def run_turn(self, thread_id, text):
-        """Queue a turn and stream the response tied to its user message."""
-        await self.initialize()
-        # A connection must subscribe to the thread even when another client
-        # already loaded it. Otherwise queue/add can succeed while this
-        # connection receives none of the turn's notifications.
-        await self.resume_thread(thread_id)
+    async def submit_turn(self, thread_id, text):
+        """Persist submission certainty around the queue RPC for either transport."""
         client_message_id = secrets.token_hex(16)
         # Persist uncertainty before the first byte can leave this process.
         self.on_submission("submitting")
@@ -215,6 +212,16 @@ class AppServer:
         if not submission_id:
             raise AppServerError("thread/queue/add returned no queued submission ID")
         self.on_submission("accepted", submission_id)
+        return client_message_id
+
+    async def run_turn(self, thread_id, text):
+        """Queue a turn and stream the response tied to its user message."""
+        await self.initialize()
+        # A connection must subscribe to the thread even when another client
+        # already loaded it. Otherwise queue/add can succeed while this
+        # connection receives none of the turn's notifications.
+        await self.resume_thread(thread_id)
+        client_message_id = await self.submit_turn(thread_id, text)
         yield ("queued", None)
         turn_id = None
         async for notification in self.notifications():
@@ -244,6 +251,92 @@ class AppServer:
                 return
 
 
+def windows_drive_path(value):
+    """Map a native drive path through WSL's default /mnt drive mounts."""
+    path = PureWindowsPath(value)
+    if not path.is_absolute() or len(path.drive) != 2 or path.drive[1] != ":":
+        raise AppServerError("Windows bridge requires an absolute drive path")
+    return Path("/mnt", path.drive[0].lower(), *path.parts[1:]).resolve()
+
+
+class WindowsAppServer(AppServer):
+    """Submit through a native stdio process; the desktop owns execution and events."""
+
+    queue_only = True
+
+    def __init__(self, home):
+        super().__init__(None)
+        self.home = Path(home).resolve()
+        self._process = None
+
+    async def connect(self):
+        # The manual Windows hook refreshes this descriptor after app updates.
+        # Never load/resume its thread in this second process: the desktop
+        # discovers the shared durable queue and executes in its own environment.
+        bridge = load_json(self.home / "wsl-bridge.json", {})
+        native_home = bridge.get("codexHome")
+        native_bin = bridge.get("codexExecutable")
+        if not isinstance(native_home, str) or not isinstance(native_bin, str):
+            raise AppServerError("Windows hook bridge descriptor is missing or invalid")
+        if windows_drive_path(native_home) != self.home:
+            raise AppServerError("Windows hook bridge refers to a different Codex home")
+        if PureWindowsPath(native_bin).name.lower() != "codex.exe":
+            raise AppServerError("Windows hook bridge must use codex.exe")
+        executable = windows_drive_path(native_bin)
+        environment = os.environ.copy()
+        environment["CODEX_HOME"] = native_home
+        inherited = [
+            entry
+            for entry in environment.get("WSLENV", "").split(":")
+            if entry and entry.split("/", 1)[0] != "CODEX_HOME"
+        ]
+        environment["WSLENV"] = ":".join([*inherited, "CODEX_HOME/w"])
+        self._process = await asyncio.create_subprocess_exec(
+            str(executable),
+            "app-server",
+            "--listen",
+            "stdio://",
+            env=environment,
+            cwd=self.home,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+            limit=8 * 1024 * 1024,
+        )
+
+    async def _send_json(self, message):
+        if self._process is None or self._process.stdin is None:
+            raise AppServerError("Windows app-server stdin is not connected")
+        self._process.stdin.write((json.dumps(message, ensure_ascii=False) + "\n").encode())
+        await self._process.stdin.drain()
+
+    async def _receive_json(self):
+        if self._process is None or self._process.stdout is None:
+            raise AppServerError("Windows app-server stdout is not connected")
+        line = await self._process.stdout.readline()
+        if not line:
+            raise AppServerError("Windows app-server closed stdout")
+        return json.loads(line)
+
+    async def close(self):
+        process = self._process
+        self._process = None
+        if process is None:
+            return
+        if process.stdin is not None:
+            process.stdin.close()
+        try:
+            await asyncio.wait_for(process.wait(), timeout=5)
+        except TimeoutError:
+            process.kill()
+            await process.wait()
+
+    async def run_turn(self, thread_id, text):
+        await self.initialize()
+        await self.submit_turn(thread_id, text)
+        yield ("queued", None)
+
+
 def load_config(path):
     with open(path, encoding="utf-8") as handle:
         config = json.load(handle)
@@ -258,7 +351,9 @@ def load_config(path):
 
 
 class Relay:
-    def __init__(self, config, ws_url, state_dir, log, codex_homes, codex_bin="codex"):
+    def __init__(
+        self, config, ws_url, state_dir, log, codex_homes, codex_bin="codex", windows_codex_homes=()
+    ):
         self.bot_id = config["bot_id"]
         self.secret = config["secret"]
         self.ws_url = ws_url
@@ -271,6 +366,9 @@ class Relay:
         self.log = log
         self.codex_homes = tuple(
             dict.fromkeys(Path(home).expanduser().resolve() for home in codex_homes)
+        )
+        self.windows_codex_homes = tuple(
+            dict.fromkeys(Path(home).expanduser().resolve() for home in windows_codex_homes)
         )
         self.codex_bin = codex_bin
         self._seq = 0
@@ -478,7 +576,8 @@ class Relay:
                 entry["token"] = token
                 lines[0] = json.dumps(entry) + "\n"
                 self._checkpoint_outbox(tmp, lines)
-            header = "**Codex 完成**\n\n"
+            title = entry.get("title") or "Codex 完成"
+            header = f"**{title}**\n\n"
             footer = f"\n\n回复本条消息继续：`r#{token}`"
             budget = MAX_CONTENT_BYTES - len((header + footer).encode("utf-8"))
             # Checkpoint each acknowledged part. Retry resumes at the remaining
@@ -562,7 +661,7 @@ class Relay:
             migrated = home.with_name(".codex-openai")
             if migrated in self.codex_homes and not home.exists():
                 home = migrated
-        if home not in self.codex_homes:
+        if home not in self.codex_homes and home not in self.windows_codex_homes:
             raise AppServerError("notification refers to an unconfigured Codex home")
         return home
 
@@ -599,6 +698,8 @@ class Relay:
             if codex_home
             else await asyncio.to_thread(self._home_for_thread, thread_id)
         )
+        if home in self.windows_codex_homes:
+            return WindowsAppServer(home)
         environment = os.environ.copy()
         environment["CODEX_HOME"] = str(home)
         process = await asyncio.create_subprocess_exec(
@@ -704,6 +805,13 @@ class Relay:
                         record("accepted")
                     submission_lock.release()
                     submission_locked = False
+                    if app.queue_only:
+                        await reply.emit(
+                            "已排队，将由 Windows 桌面端在会话空闲时执行。"
+                            "请保持桌面端运行并加载该会话；完成后会另发通知。",
+                            finish=True,
+                        )
+                        return
                     await reply.emit("已排队，等待当前任务完成。")
                 elif kind == "done":
                     status = value
@@ -939,6 +1047,13 @@ def main(argv=None):
         help="independent Codex home to search for sessions (repeatable)",
     )
     parser.add_argument(
+        "--windows-codex-home",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="WSL path to a native Windows Codex home (repeatable; manual hook bridge)",
+    )
+    parser.add_argument(
         "--codex-bin",
         default="codex",
         metavar="PATH",
@@ -962,7 +1077,15 @@ def main(argv=None):
         log.error("cannot load config: %s", exc)
         return 1
 
-    relay = Relay(config, args.ws_url, args.state_dir, log, args.codex_home, args.codex_bin)
+    relay = Relay(
+        config,
+        args.ws_url,
+        args.state_dir,
+        log,
+        args.codex_home,
+        args.codex_bin,
+        args.windows_codex_home,
+    )
     try:
         return asyncio.run(relay.run())
     except KeyboardInterrupt:

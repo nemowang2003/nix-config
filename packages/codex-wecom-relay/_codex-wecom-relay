@@ -11,5 +11,6 @@ function _codex-wecom-relay {
     '--state-dir[relay state directory]:directory:_files -/' \
     '--log-level[logging level]:level:(DEBUG INFO WARNING ERROR CRITICAL)' \
     '*--codex-home[independent Codex home]:directory:_files -/' \
+    '*--windows-codex-home[native Windows Codex home mounted in WSL]:directory:_files -/' \
     '--codex-bin[Codex executable]:executable:_files'
 }
