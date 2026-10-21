@@ -251,7 +251,7 @@ class NotifyTests(unittest.TestCase):
     @mock.patch.object(notify, "send_serverchan")
     @mock.patch.object(notify.os, "fork", return_value=123)
     def test_notification_dispatch_returns_in_parent(self, fork, send_serverchan):
-        notify.dispatch_notifications("title", "content")
+        notify.dispatch_notifications()
 
         fork.assert_called_once_with()
         send_serverchan.assert_not_called()

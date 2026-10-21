@@ -28,12 +28,10 @@ logged; URLs and userids appear solely in short-lived argv or outbox lines.
 """
 
 import argparse
-import base64
 import fcntl
 import hashlib
 import json
 import os
-import platform
 import re
 import shutil
 import socket
@@ -67,18 +65,6 @@ reply_outbox = os.path.join(
 )
 serverchan_outbox = os.path.join(state_dir, "serverchan-outbox")
 SERVERCHAN_RETRY_DELAYS = (2, 5)
-
-PS_TOAST_SCRIPT = """
-$t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("%s"));
-$b = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("%s"));
-[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null;
-[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null;
-$xmlText = "<toast><visual><binding template=""ToastGeneric""><text>{0}</text><text>{1}</text></binding></visual></toast>" -f [System.Security.SecurityElement]::Escape($t), [System.Security.SecurityElement]::Escape($b);
-$doc = New-Object Windows.Data.Xml.Dom.XmlDocument;
-$doc.LoadXml($xmlText);
-$toast = New-Object Windows.UI.Notifications.ToastNotification($doc);
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("Microsoft.WindowsTerminal_8wekyb3d8bbwe!App").Show($toast);
-"""
 
 
 def log(msg):
@@ -202,10 +188,6 @@ def stdin_json():
         return {}
 
 
-def clean_control_chars(text):
-    return "".join(ch for ch in text if not (ord(ch) < 32 or ord(ch) == 127))
-
-
 def wecom_markdown(content):
     """Normalize the assistant text for the WeCom push, keeping its structure.
 
@@ -227,31 +209,6 @@ def wecom_markdown(content):
             previous_blank = True
         normalized.append(line)
     return "\n".join(normalized)
-
-
-def notify_local(title, content):
-    release = platform.uname().release.lower()
-    if "microsoft" not in release and "wsl" not in release:
-        return
-    powershell = shutil.which("powershell.exe")
-    if not powershell:
-        log("notify local failed: powershell.exe unavailable")
-        return
-    b64_title = base64.b64encode(clean_control_chars(title).encode()).decode()
-    b64_body = base64.b64encode(clean_control_chars(content).encode()).decode()
-    script = PS_TOAST_SCRIPT % (b64_title, b64_body)
-    try:
-        result = subprocess.run(
-            [powershell, "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=30,
-        )
-        if result.returncode:
-            log(f"notify local failed: exit_code={result.returncode}")
-    except (OSError, subprocess.TimeoutExpired) as error:
-        log(f"notify local failed: {type(error).__name__}")
 
 
 def queue_wecom_push(thread_id, content, chatid, codex_home, turn_id=None):
@@ -398,8 +355,8 @@ def drain_serverchan():
         os.close(fd)
 
 
-def dispatch_notifications(title, content):
-    """Deliver slow notifications outside the hook's timeout budget."""
+def dispatch_notifications():
+    """Drain ServerChan notifications outside the hook's timeout budget."""
     try:
         pid = os.fork()
     except OSError as error:
@@ -416,7 +373,6 @@ def dispatch_notifications(title, content):
             os.dup2(output.fileno(), sys.stdout.fileno())
             os.dup2(output.fileno(), sys.stderr.fileno())
 
-        notify_local(title, content)
         drain_serverchan()
     except Exception as error:
         log(f"notification delivery exception: {type(error).__name__}")
@@ -541,7 +497,7 @@ def cmd_notify(args):
     else:
         log(f"notify wecom skip: route {profile} has no wecom userid")
 
-    dispatch_notifications(full_title, content)
+    dispatch_notifications()
     return 0
 
 
