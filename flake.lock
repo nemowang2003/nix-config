@@ -490,11 +490,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1792212895,
-        "narHash": "sha256-Pu4yk29OrDhu9nY5LVAtaqj2ON/seMFu2Y+2LYU1kXg=",
+        "lastModified": 1792693808,
+        "narHash": "sha256-2OM7PUXbOnWh5eFFvcAmOLDo+TP9kXyqUFIxPuv8LW4=",
         "owner": "nemowang2003",
         "repo": "llama-on-demand",
-        "rev": "94df8861dc0849c9e247b2c4da91fff1e88dad9b",
+        "rev": "7c56acc67952630d52ae68d8c843d43e74dcfca6",
         "type": "github"
       },
       "original": {

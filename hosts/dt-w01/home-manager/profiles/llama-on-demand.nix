@@ -6,7 +6,6 @@
   ...
 }: let
   cfg = config.services.llama-on-demand;
-  environment-file = "${config.xdg.configHome}/llama-on-demand/service.env";
   llama-package = inputs.llama-on-demand.lib.mkPackage {
     inherit pkgs;
     cudaSupport = true;
@@ -65,12 +64,13 @@ in {
   services.llama-on-demand = {
     enable = true;
     package = llama-package;
-    inherit environment-file;
     # Windows Serve requires a TCP target; the application binds port 0 and
     # publishes its actual URL before notifying systemd that it is ready.
     host = "127.0.0.1";
     port = 0;
     settings = {
+      # Tailscale Serve controls remote access; local callers need no API key.
+      auth_required = false;
       idle_seconds = 30;
       fit_target_mib = 1024;
       queue_timeout = 3600;
@@ -99,17 +99,4 @@ in {
     # Windows being unavailable should not turn a normal shutdown into a failure.
     ExecStopPost = lib.mkAfter ["-${lib.getExe publish} remove"];
   };
-  home.activation.llama-on-demand-key = lib.hm.dag.entryAfter ["writeBoundary"] ''
-    run ${pkgs.python314}/bin/python - <<'PY'
-    import os
-    import secrets
-    from pathlib import Path
-    path = Path(${builtins.toJSON environment-file})
-    if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, "w") as output:
-            output.write("LLAMA_ON_DEMAND_API_KEY=sk-" + secrets.token_urlsafe(32) + "\n")
-    PY
-  '';
 }
