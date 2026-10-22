@@ -2,13 +2,13 @@
   networking.computerName = "Ian's MacBook Air";
 
   homebrew.casks = [
-    "android-platform-tools"
     "bitwarden"
     "obs"
     "obsidian"
     "qq"
     "steam"
     "tencent-meeting"
+    "uuremote"
     "visual-studio-code"
     "wechat"
     "windows-app"
