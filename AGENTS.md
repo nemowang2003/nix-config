@@ -25,7 +25,7 @@ Use the devshell via direnv or `nix develop`.
 - `hms`: run `home-manager switch --flake "$PRJ_ROOT"`.
 - `rebuild`: run the host system activation, then `hms`; on generic Linux it installs the system Nix configuration first.
 - `nix run .#generic-rebuild [build|switch] [--flake <flake>]`: build or activate the current host's `genericConfigurations.<host>.config.system.build.activationPackage`; it resolves the host from `hostname -s`, and `switch` must run as root (the `rebuild` devshell command calls it on generic Linux).
-- `update`: run `nix flake update`, then `rebuild`.
+- `update`: require a clean Git worktree, run `nix flake update`, commit tracked changes as `update: YYYY-MM-DD`, then run `rebuild`.
 - `nix flake check`: run the current system's Python package tests and evaluate configurations for all hosts declared in `.#hosts`.
 - `check-activation`: dry-run Home Manager activation packages for all hosts declared in `.#hosts`.
 - `gh-keysync`: publish declared SSH public keys to GitHub.

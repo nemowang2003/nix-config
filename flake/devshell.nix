@@ -94,10 +94,18 @@
         {
           name = "update";
           category = "deployment";
-          help = "nix flake update";
+          help = "update flake inputs, commit, and rebuild (requires a clean worktree)";
           command = ''
             set -euo pipefail
-            nix flake update && rebuild
+            cd "$PRJ_ROOT"
+            worktree_status="$(git status --porcelain --untracked-files=all)"
+            if [[ -n "$worktree_status" ]]; then
+              echo 'update: uncommitted changes; commit or stash them before updating.' >&2
+              exit 1
+            fi
+            nix flake update
+            git commit --verbose --all -m "update: $(date +%Y-%m-%d)"
+            rebuild
           '';
         }
         {
